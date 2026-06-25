@@ -1,0 +1,529 @@
+// Skifta — data model.
+//
+// This schema is a faithful encoding of spec §9 (plus the Deviation lifecycle
+// that §6.3 requires and the billing/trial fields §12 requires). Each model is
+// annotated with the spec section it comes from. Two load-bearing invariants:
+//
+//   1. Accounts are PERSON-CENTRIC, never restaurant-owned (§3.1). A User can
+//      hold many Memberships, one per Restaurant, each with its own role.
+//   2. ClockEvent is APPEND-ONLY / immutable (§9, §13). A correction never
+//      overwrites it — it creates a ClockEventAdjustment that points back at
+//      the original. This is what makes the time data audit-proof.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── Enums ─────────────────────────────
+
+enum Role {
+  OWNER
+  CO_OWNER
+  EMPLOYEE
+}
+
+enum ContactType {
+  PHONE
+  EMAIL
+}
+
+enum InviteStatus {
+  PENDING
+  CONSUMED
+  EXPIRED
+  REVOKED
+}
+
+enum RestaurantTier {
+  BAS // pass-sektionen
+  FULL // + instämpling + ekonomi/admin + AI
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  FROZEN // trial ended, no card — login blocked, data preserved (§12.1)
+  CANCELED
+}
+
+enum OpenShiftFill {
+  FIRST_COME // först-till-kvarn
+  MANUAL_PICK // ägaren väljer bland intresserade
+}
+
+enum SwapMode {
+  DIRECTED // riktad förfrågan
+  BROAD // bred förfrågan, först-till-kvarn
+}
+
+enum ShiftStatus {
+  OPEN // öppet pass, ingen tilldelad
+  ASSIGNED
+  COMPLETED
+  CANCELED
+}
+
+enum SwapStatus {
+  PENDING
+  ACCEPTED // a colleague accepted, awaiting owner approval
+  APPROVED // owner/co-owner approved, schedule updated
+  ESCALATED // no qualified reply within the window → escalated to owner
+  DECLINED
+  CANCELED
+}
+
+enum ClockDirection {
+  IN
+  OUT
+}
+
+enum VerificationMethod {
+  WEBAUTHN // QR + Face ID/Touch ID (§5 method 1)
+  PIN // shared tablet (§5 method 2)
+  GEOFENCE // future, not MVP (§5 method 3)
+  MANUAL // admin-entered / adjusted
+}
+
+enum SyncStatus {
+  QUEUED // offline, not yet synced (§6.2)
+  SYNCED
+}
+
+enum DeviationSeverity {
+  NONE // within tolerance window
+  LOW // 10–30 min, neutral colour
+  HIGH // >30 min OR repeated pattern
+}
+
+enum DeviationStatus {
+  OPEN // öppen
+  REVIEWED // granskad
+  APPROVED // godkänd
+}
+
+enum PayrollStatus {
+  DRAFT
+  NEEDS_REVIEW // has unreviewed deviations — blocks silent export (§6.3)
+  READY
+  APPROVED
+  EXPORTED
+}
+
+enum ExportFormat {
+  FORTNOX
+  VISMA
+  CSV
+  CUSTOM // imported column structure (§6.3)
+}
+
+// ──────────────────────────── Identity ───────────────────────────
+
+/// §9 User — person-centric. Owns its own display name; phone/email are stored
+/// normalised (E.164 / lowercased) so matching is always against the canonical
+/// value (§4).
+model User {
+  id              String   @id @default(cuid())
+  displayName     String
+  normalizedPhone String?  @unique // E.164, e.g. +46701234567
+  normalizedEmail String?  @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  memberships         Membership[]
+  webauthnCredentials WebAuthnCredential[]
+  pinCredentials      PinCredential[]
+  employeeTags        EmployeeTag[]
+  availabilities      Availability[]
+  assignedShifts      Shift[]                @relation("ShiftAssignee")
+  clockEvents         ClockEvent[]
+  adjustmentsMade     ClockEventAdjustment[] @relation("AdjustmentAuthor")
+  swapsRequested      ShiftSwapRequest[]     @relation("SwapRequester")
+  swapsDirectedTo     ShiftSwapRequest[]     @relation("SwapDirectedTo")
+  swapsAccepted       ShiftSwapRequest[]     @relation("SwapAcceptedBy")
+  swapsApproved       ShiftSwapRequest[]     @relation("SwapApprovedBy")
+  invitesCreated      Invite[]               @relation("InviteCreatedBy")
+  invitesConsumed     Invite[]               @relation("InviteConsumedBy")
+  payrollSummaries    PayrollPeriodSummary[]
+  deviationsAbout     Deviation[]            @relation("DeviationSubject")
+  deviationsAssigned  Deviation[]            @relation("DeviationAssignee")
+  deviationsReviewed  Deviation[]            @relation("DeviationReviewer")
+}
+
+/// §9 WebAuthnCredential — many per User (one per device). Stores the public
+/// credential only; the biometric never leaves the device (§5, §13).
+model WebAuthnCredential {
+  id           String    @id @default(cuid())
+  userId       String
+  credentialId String    @unique
+  publicKey    Bytes
+  counter      BigInt    @default(0)
+  transports   String[] // e.g. ["internal", "hybrid"]
+  deviceLabel  String?
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// §9 PinCredential — hashed PIN for the shared-tablet method. Scoped per
+/// restaurant so the same person can have different PINs at different venues.
+/// PIN is never stored in clear text (§5, §9).
+model PinCredential {
+  id           String   @id @default(cuid())
+  userId       String
+  restaurantId String
+  pinHash      String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, restaurantId])
+}
+
+// ─────────────────────────── Restaurant ──────────────────────────
+
+/// §9 Restaurant — subscription, tier, trial, and the restaurant's configurable
+/// thresholds (tolerance window, default export format, swap behaviour).
+model Restaurant {
+  id        String  @id @default(cuid())
+  name      String
+  address   String?
+  orgNumber String?
+
+  tier                 RestaurantTier     @default(FULL)
+  subscriptionStatus   SubscriptionStatus @default(TRIALING)
+  trialStartedAt       DateTime?
+  trialEndsAt          DateTime? // 30-day trial (§12.1)
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+
+  // Configurable thresholds (§6.2, §6.3, §6.1)
+  toleranceLowMinutes    Int           @default(10) // ≤ this = in time, no flag
+  toleranceHighMinutes   Int           @default(30) // > this = high-priority flag
+  defaultExportFormat    ExportFormat  @default(CSV)
+  openShiftFill          OpenShiftFill @default(MANUAL_PICK)
+  swapDefaultMode        SwapMode      @default(DIRECTED)
+  swapEscalationMinutes  Int           @default(120)
+  autoApproveShortNotice Boolean       @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships      Membership[]
+  invites          Invite[]
+  tags             Tag[]
+  shifts           Shift[]
+  availabilities   Availability[]
+  clockEvents      ClockEvent[]
+  pinCredentials   PinCredential[]
+  obRuleSets       OBRuleSet[]
+  exportTemplates  ExportTemplate[]
+  payrollSummaries PayrollPeriodSummary[]
+  deviations       Deviation[]
+  retentionPolicy  RetentionPolicy?
+}
+
+/// §9 Membership — the User ↔ Restaurant join that carries the role. The heart
+/// of multi-restaurant support (§3.3). `isBillingOwner = false` is the *only*
+/// thing that distinguishes a co-owner from the owner (§3.2) — do not build a
+/// separate permission tree for co-owners.
+model Membership {
+  id             String    @id @default(cuid())
+  userId         String
+  restaurantId   String
+  role           Role
+  isBillingOwner Boolean   @default(false)
+  localLabel     String? // restaurant-local nickname for the person (§4)
+  createdAt      DateTime  @default(now())
+  endedAt        DateTime? // set when the employee leaves (§13)
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, restaurantId])
+  @@index([restaurantId])
+}
+
+/// §4 Invite — a single-use token bound to a normalised contact + restaurant +
+/// intended role. Forwarding a link is useless: the accept step re-verifies the
+/// original contact via one-time code.
+model Invite {
+  id                String       @id @default(cuid())
+  token             String       @unique
+  restaurantId      String
+  name              String
+  contactType       ContactType
+  normalizedContact String
+  role              Role
+  isBillingOwner    Boolean      @default(false)
+  intendedTagIds    String[] // tags to apply on accept (§4)
+  status            InviteStatus @default(PENDING)
+  expiresAt         DateTime // 7 days (§4)
+  createdById       String
+  consumedByUserId  String?
+  consumedAt        DateTime?
+  revokedAt         DateTime?
+  createdAt         DateTime     @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  createdBy  User       @relation("InviteCreatedBy", fields: [createdById], references: [id])
+  consumedBy User?      @relation("InviteConsumedBy", fields: [consumedByUserId], references: [id])
+
+  @@index([restaurantId, normalizedContact, status])
+}
+
+// ───────────────────────── Competence tags ───────────────────────
+
+/// §7 Tag — freely defined by the owner (e.g. "Kök", "Bar"). No hardcoded
+/// categories.
+model Tag {
+  id           String   @id @default(cuid())
+  restaurantId String
+  name         String
+  createdAt    DateTime @default(now())
+
+  restaurant        Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  employeeTags      EmployeeTag[]
+  requiredForShifts Shift[]       @relation("ShiftRequiredTags")
+
+  @@unique([restaurantId, name])
+}
+
+/// §7/§9 EmployeeTag — User ↔ Tag within a restaurant (many-to-many).
+model EmployeeTag {
+  id     String @id @default(cuid())
+  userId String
+  tagId  String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tagId])
+}
+
+// ─────────────────────────── Scheduling ──────────────────────────
+
+/// §6.1/§9 Shift — assignedUser is null for open shifts. `requiredTags` gate who
+/// gets notified about open shifts and swap requests (§7 matching).
+model Shift {
+  id             String      @id @default(cuid())
+  restaurantId   String
+  startsAt       DateTime
+  endsAt         DateTime
+  assignedUserId String?
+  status         ShiftStatus @default(OPEN)
+  note           String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  restaurant   Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  assignedUser User?              @relation("ShiftAssignee", fields: [assignedUserId], references: [id])
+  requiredTags Tag[]              @relation("ShiftRequiredTags")
+  swapRequests ShiftSwapRequest[]
+
+  @@index([restaurantId, startsAt])
+}
+
+/// §6.1/§9 ShiftSwapRequest — the "sick → request → reply → approval" flow that
+/// must beat a group chat. `mode` picks directed vs broad; `escalateAt` drives
+/// the escalation-to-owner timer.
+model ShiftSwapRequest {
+  id            String     @id @default(cuid())
+  shiftId       String
+  requestedById String
+  mode          SwapMode
+  directedToId  String?
+  acceptedById  String?
+  approvedById  String?
+  status        SwapStatus @default(PENDING)
+  escalateAt    DateTime?
+  createdAt     DateTime   @default(now())
+  resolvedAt    DateTime?
+
+  shift       Shift @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  requestedBy User  @relation("SwapRequester", fields: [requestedById], references: [id])
+  directedTo  User? @relation("SwapDirectedTo", fields: [directedToId], references: [id])
+  acceptedBy  User? @relation("SwapAcceptedBy", fields: [acceptedById], references: [id])
+  approvedBy  User? @relation("SwapApprovedBy", fields: [approvedById], references: [id])
+
+  @@index([shiftId])
+}
+
+/// §6.1/§9 Availability — general, recurring availability so the owner doesn't
+/// have to ask each week. Stored as weekday + minute range.
+model Availability {
+  id           String   @id @default(cuid())
+  userId       String
+  restaurantId String
+  weekday      Int // 0 = Monday … 6 = Sunday
+  startMinute  Int // minutes from midnight
+  endMinute    Int
+  createdAt    DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([userId, restaurantId])
+}
+
+// ───────────────────────────── Clock ─────────────────────────────
+
+/// §9 ClockEvent — APPEND-ONLY. Never updated. `clientId` dedupes the offline
+/// queue (§6.2): a stamp made offline carries a client-generated id so a replay
+/// after reconnect can't create a duplicate. Corrections live in
+/// ClockEventAdjustment, not here.
+model ClockEvent {
+  id                 String             @id @default(cuid())
+  userId             String
+  restaurantId       String
+  direction          ClockDirection
+  timestamp          DateTime // effective (local) time of the stamp
+  verificationMethod VerificationMethod
+  syncStatus         SyncStatus         @default(SYNCED)
+  clientId           String             @unique // offline-queue idempotency key
+  deviceLabel        String?
+  scheduledShiftId   String? // shift this stamp is matched against, for deviations
+  createdAt          DateTime           @default(now()) // server insert time
+
+  user        User                   @relation(fields: [userId], references: [id])
+  restaurant  Restaurant             @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  adjustments ClockEventAdjustment[]
+  deviations  Deviation[]
+
+  @@index([restaurantId, timestamp])
+  @@index([userId, timestamp])
+}
+
+/// §9 ClockEventAdjustment — a correction is a NEW row pointing back at the
+/// original ClockEvent, recording who/when/why. The original is never mutated,
+/// which makes the record stronger evidence than a logbook, not weaker (§13).
+model ClockEventAdjustment {
+  id              String          @id @default(cuid())
+  originalEventId String
+  adjustedById    String
+  newTimestamp    DateTime?
+  newDirection    ClockDirection?
+  reason          String
+  createdAt       DateTime        @default(now())
+
+  originalEvent ClockEvent @relation(fields: [originalEventId], references: [id], onDelete: Cascade)
+  adjustedBy    User       @relation("AdjustmentAuthor", fields: [adjustedById], references: [id])
+
+  @@index([originalEventId])
+}
+
+/// §6.2/§6.3 Deviation — graded flag (severity) with an explicit review
+/// lifecycle (status) and an accountable owner. Unreviewed deviations must
+/// never end up silently in an export (§6.3).
+model Deviation {
+  id           String            @id @default(cuid())
+  restaurantId String
+  userId       String
+  clockEventId String?
+  shiftId      String?
+  severity     DeviationSeverity @default(LOW)
+  status       DeviationStatus   @default(OPEN)
+  minutesDelta Int // signed: + = late/over, − = early/under
+  reason       String?
+  assignedToId String? // ansvarig (owner/co-owner) who is notified
+  reviewedById String?
+  reviewedAt   DateTime?
+  createdAt    DateTime          @default(now())
+
+  restaurant Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  user       User        @relation("DeviationSubject", fields: [userId], references: [id])
+  clockEvent ClockEvent? @relation(fields: [clockEventId], references: [id])
+  assignedTo User?       @relation("DeviationAssignee", fields: [assignedToId], references: [id])
+  reviewedBy User?       @relation("DeviationReviewer", fields: [reviewedById], references: [id])
+
+  @@index([restaurantId, status])
+}
+
+// ──────────────────────── Payroll & export ───────────────────────
+
+/// §13 OBRuleSet — the restaurant's chosen OB-rule template, VERSIONED so a
+/// payroll draft can be traced to exactly which rules applied when it was made.
+/// Rules come from preset templates the owner picks, not free-form entry (§13).
+model OBRuleSet {
+  id           String   @id @default(cuid())
+  restaurantId String
+  name         String // e.g. "HRF-liknande"
+  version      Int      @default(1)
+  rules        Json // OB/overtime rule definitions
+  isActive     Boolean  @default(true)
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  restaurant Restaurant             @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  payrolls   PayrollPeriodSummary[]
+
+  @@unique([restaurantId, name, version])
+}
+
+/// §6.3/§9 ExportTemplate — saved export format. "Save as my default"
+/// (isDefault) and "import my own column structure" (CUSTOM + columnMapping).
+model ExportTemplate {
+  id            String       @id @default(cuid())
+  restaurantId  String
+  name          String
+  format        ExportFormat
+  columnMapping Json? // for CUSTOM: maps Skifta fields → the byrå's columns
+  isDefault     Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+}
+
+/// §8.2/§9 PayrollPeriodSummary — summed data per User per period. `lineItems`
+/// holds the transparent breakdown (hours × rate + supplements) that links back
+/// to the exact ClockEvents and rules it was built on (§8.2 spårbarhet).
+model PayrollPeriodSummary {
+  id                      String        @id @default(cuid())
+  restaurantId            String
+  userId                  String
+  periodStart             DateTime
+  periodEnd               DateTime
+  baseHours               Decimal       @db.Decimal(10, 2)
+  obHours                 Decimal       @default(0) @db.Decimal(10, 2)
+  grossAmount             Decimal       @default(0) @db.Decimal(12, 2)
+  status                  PayrollStatus @default(DRAFT)
+  hasUnreviewedDeviations Boolean       @default(false)
+  lineItems               Json? // transparent per-row calculation (§8.2)
+  obRuleSetId             String?
+  approvedById            String?
+  approvedAt              DateTime?
+  exportedAt              DateTime?
+  createdAt               DateTime      @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id])
+  obRuleSet  OBRuleSet? @relation(fields: [obRuleSetId], references: [id])
+
+  @@unique([restaurantId, userId, periodStart, periodEnd])
+}
+
+/// §13 RetentionPolicy — per-restaurant retention. ClockEvent/payroll data is
+/// kept as long as bookkeeping law requires, then anonymised/erased. Supports
+/// the "employee leaves" flow without breaking accounting obligations.
+model RetentionPolicy {
+  id                       String   @id @default(cuid())
+  restaurantId             String   @unique
+  clockDataRetentionMonths Int      @default(84) // verify statutory period at impl
+  anonymizeAfterMonths     Int?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}

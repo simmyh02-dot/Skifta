@@ -1,26 +1,92 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+  Skifta design system.
+  Palette and type are derived from the product mockups:
+  warm cream surfaces, deep teal as the single brand colour,
+  near-black "ink" sections, and a terracotta accent reserved
+  for deviations / things that need a human's attention.
+*/
+@theme {
+  /* Surfaces */
+  --color-bg: #f1eee7;
+  --color-surface: #fcfbf7;
+  --color-surface-2: #f6f3ec;
+
+  /* Ink (text) */
+  --color-ink: #1b1b18;
+  --color-ink-muted: #6f6f66;
+  --color-ink-faint: #9b9b90;
+
+  /* Brand teal */
+  --color-primary: #2c6a5e;
+  --color-primary-hover: #245a50;
+  --color-primary-ink: #f4f1ea;
+  --color-primary-soft: #e2ede6;
+
+  /* Dark sections (stats band, Fullt paket card) */
+  --color-dark: #1b1b19;
+  --color-dark-2: #232320;
+  --color-dark-ink: #ece9e1;
+  --color-dark-muted: #9d9d93;
+
+  /* Terracotta accent — deviations, flags, "needs review" */
+  --color-accent: #b4663b;
+  --color-accent-hover: #a25a32;
+  --color-accent-soft: #f3e3d7;
+  --color-accent-ink: #8a4a28;
+
+  /* Status */
+  --color-success: #2c6a5e;
+  --color-success-soft: #e2ede6;
+
+  /* Lines */
+  --color-border: #e7e2d7;
+  --color-border-strong: #d9d3c5;
+
+  /* Type */
+  --font-display: var(--font-familjen), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  /* Radii */
+  --radius-card: 1.25rem;
+  --radius-pill: 999px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+  ::selection {
+    background: var(--color-primary);
+    color: var(--color-primary-ink);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  /* Diagonal hatch used for the "screenshot placeholder" panels in the mockups */
+  .hatch {
+    background-color: var(--color-surface);
+    background-image: repeating-linear-gradient(
+      45deg,
+      var(--color-border) 0,
+      var(--color-border) 1px,
+      transparent 1px,
+      transparent 10px
+    );
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
 }
