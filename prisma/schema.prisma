@@ -122,6 +122,12 @@ enum ExportFormat {
   CUSTOM // imported column structure (§6.3)
 }
 
+enum CodePurpose {
+  LOGIN // owner/employee sign-in (§12.1)
+  INVITE_ACCEPT // verify the invited contact (§4)
+  DEVICE_REREGISTER // re-register a WebAuthn key on a new phone (§5)
+}
+
 // ──────────────────────────── Identity ───────────────────────────
 
 /// §9 User — person-centric. Owns its own display name; phone/email are stored
@@ -526,4 +532,22 @@ model RetentionPolicy {
   updatedAt                DateTime @updatedAt
 
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}
+
+/// One-time code for OTP verification (§4 invite accept, §5 device
+/// re-registration, §12.1 login). The code is stored hashed, never in clear.
+/// Bound to a normalised contact so it survives the same matching rules as
+/// invites. Short-lived; `attempts` guards against brute force.
+model VerificationCode {
+  id                String      @id @default(cuid())
+  contactType       ContactType
+  normalizedContact String
+  codeHash          String
+  purpose           CodePurpose
+  expiresAt         DateTime
+  consumedAt        DateTime?
+  attempts          Int         @default(0)
+  createdAt         DateTime    @default(now())
+
+  @@index([normalizedContact, purpose])
 }

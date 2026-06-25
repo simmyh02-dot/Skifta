@@ -89,6 +89,50 @@ const en: Messages = {
   footer: {
     copy: "© 2026 Skifta · Made in Sweden for small restaurants",
   },
+
+  auth: {
+    login: {
+      title: "Log in",
+      subtitle: "Enter your phone or email and we'll send a one-time code.",
+      contactLabel: "Phone or email",
+      contactPlaceholder: "070 123 45 67",
+      sendCode: "Send code",
+      codeTitle: "Enter the code",
+      codeSubtitle: "We sent a 6-digit code to {contact}.",
+      codeLabel: "One-time code",
+      verify: "Log in",
+      resend: "Send a new code",
+      back: "Back",
+      sending: "Sending …",
+      verifying: "Logging in …",
+      errorContact: "Check the number or email and try again.",
+      errorCode: "Wrong or expired code. Try again.",
+      sent: "If the account exists, a code has been sent.",
+    },
+    picker: {
+      title: "Choose restaurant",
+      subtitle: "You have access to more than one restaurant.",
+    },
+    logout: "Log out",
+  },
+
+  app: {
+    nav: {
+      schedule: "Schedule",
+      clock: "Clock in",
+      profile: "Profile",
+      admin: "Admin",
+    },
+    roles: {
+      OWNER: "Owner",
+      CO_OWNER: "Co-owner",
+      EMPLOYEE: "Employee",
+    },
+    soon: {
+      title: "Signed in",
+      body: "Shifts, the time clock and admin are next. You're inside the app shell.",
+    },
+  },
 };
 
 export default en;

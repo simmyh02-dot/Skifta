@@ -90,6 +90,51 @@ const sv = {
   footer: {
     copy: "© 2026 Skifta · Gjort i Sverige för små restauranger",
   },
+
+  auth: {
+    login: {
+      title: "Logga in",
+      subtitle:
+        "Ange ditt telefonnummer eller e-post så skickar vi en engångskod.",
+      contactLabel: "Telefon eller e-post",
+      contactPlaceholder: "070 123 45 67",
+      sendCode: "Skicka kod",
+      codeTitle: "Ange koden",
+      codeSubtitle: "Vi skickade en 6-siffrig kod till {contact}.",
+      codeLabel: "Engångskod",
+      verify: "Logga in",
+      resend: "Skicka ny kod",
+      back: "Tillbaka",
+      sending: "Skickar …",
+      verifying: "Loggar in …",
+      errorContact: "Kontrollera numret eller e-posten och försök igen.",
+      errorCode: "Fel eller utgången kod. Försök igen.",
+      sent: "Om kontot finns har en kod skickats.",
+    },
+    picker: {
+      title: "Välj restaurang",
+      subtitle: "Du har tillgång till flera restauranger.",
+    },
+    logout: "Logga ut",
+  },
+
+  app: {
+    nav: {
+      schedule: "Schema",
+      clock: "Stämpla",
+      profile: "Profil",
+      admin: "Admin",
+    },
+    roles: {
+      OWNER: "Ägare",
+      CO_OWNER: "Delägare",
+      EMPLOYEE: "Anställd",
+    },
+    soon: {
+      title: "Inloggad",
+      body: "Pass, stämpling och admin byggs härnäst. Du är inne i appskalet.",
+    },
+  },
 };
 
 export type Messages = typeof sv;
