@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useTranslations } from "@/i18n/LocaleProvider";
 import { Button } from "@/components/ui/Button";
+import { TagsAdmin } from "@/components/admin/TagsAdmin";
 
 type Role = "EMPLOYEE" | "CO_OWNER";
 
@@ -134,10 +135,15 @@ export function MembersAdminView({
 
   return (
     <div className="mx-auto max-w-2xl px-5 py-10">
-      <h1 className="text-2xl font-bold text-ink">{t("invite.admin.title")}</h1>
+      <a href="/app/schedule" className="text-sm text-ink-muted hover:text-primary">
+        ← {t("app.nav.schedule")}
+      </a>
+      <h1 className="mt-2 text-2xl font-bold text-ink">{t("invite.admin.title")}</h1>
       <p className="mt-1.5 text-sm text-ink-muted">
         {t("invite.admin.subtitle")}
       </p>
+
+      <TagsAdmin />
 
       <form
         onSubmit={invite}

@@ -153,6 +153,7 @@ model User {
   swapsDirectedTo     ShiftSwapRequest[]     @relation("SwapDirectedTo")
   swapsAccepted       ShiftSwapRequest[]     @relation("SwapAcceptedBy")
   swapsApproved       ShiftSwapRequest[]     @relation("SwapApprovedBy")
+  shiftInterests      ShiftInterest[]
   invitesCreated      Invite[]               @relation("InviteCreatedBy")
   invitesConsumed     Invite[]               @relation("InviteConsumedBy")
   payrollSummaries    PayrollPeriodSummary[]
@@ -336,8 +337,23 @@ model Shift {
   assignedUser User?              @relation("ShiftAssignee", fields: [assignedUserId], references: [id])
   requiredTags Tag[]              @relation("ShiftRequiredTags")
   swapRequests ShiftSwapRequest[]
+  interests    ShiftInterest[]
 
   @@index([restaurantId, startsAt])
+}
+
+/// §6.1 ShiftInterest — for MANUAL_PICK open shifts: an employee raises a
+/// hand, the owner picks one. Irrelevant once the shift is no longer OPEN.
+model ShiftInterest {
+  id        String   @id @default(cuid())
+  shiftId   String
+  userId    String
+  createdAt DateTime @default(now())
+
+  shift Shift @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([shiftId, userId])
 }
 
 /// §6.1/§9 ShiftSwapRequest — the "sick → request → reply → approval" flow that
