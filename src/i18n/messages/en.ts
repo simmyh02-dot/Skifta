@@ -116,6 +116,45 @@ const en: Messages = {
     logout: "Log out",
   },
 
+  invite: {
+    join: {
+      loading: "Loading invite …",
+      invalidTitle: "This link doesn't work",
+      invalidBody:
+        "The invite may have expired, already been used, or been revoked. Ask the owner to send a new one.",
+      title: "You're invited to {restaurant}",
+      subtitle: "Hi {name}! You're invited as {role}. Verify your details to finish.",
+      sendCode: "Send verification code",
+      sending: "Sending …",
+      codeLabel: "One-time code",
+      verify: "Join",
+      verifying: "Joining …",
+      resend: "Send new code",
+      errorCode: "Wrong or expired code. Try again.",
+    },
+    admin: {
+      title: "Staff",
+      subtitle: "Invite new team members with personal, one-time links.",
+      singleTitle: "Invite one person",
+      namePlaceholder: "Name",
+      contactPlaceholder: "Phone or email",
+      send: "Send invite",
+      bulkTitle: "Invite several at once",
+      bulkHint: "One line per person: Name, phone or email",
+      bulkSend: "Send all",
+      bulkResult: "{created} invites sent, {skipped} skipped.",
+      errorCreate: "Couldn't create invite. Check the details.",
+      revoke: "Revoke",
+      empty: "No invites yet.",
+      status: {
+        PENDING: "Pending",
+        CONSUMED: "Accepted",
+        EXPIRED: "Expired",
+        REVOKED: "Revoked",
+      },
+    },
+  },
+
   app: {
     nav: {
       schedule: "Schedule",

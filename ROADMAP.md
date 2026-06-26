@@ -25,8 +25,20 @@ commit as the code it describes.
 - ✅ Edge gate — `src/proxy.ts` bounces unauthenticated users off `/app`. Verified: `/app` → 307 `/login`.
 - ✅ OTP login — request-code / verify / logout APIs, `VerificationCode` model, hashed codes, contact normalization to E.164. Console sender so the flow runs with no SMS keys. Verified: bad contact → 400.
 - ✅ Login UI + restaurant picker (§3.3) — `/login` (contact → code) and `/app/select`.
-- ⬜ End-to-end login (needs DB + a seeded user) and real SMS/email provider.
-- 18 unit tests green (`npm test`); production build passes.
+- ✅ End-to-end login — DB provisioned (Neon Postgres), first migration run, real login→session→`/app` flow verified against it.
+- ⬜ Real SMS/email provider (still console-logged in dev).
+- 20 unit tests green (`npm test`); production build passes.
+
+## Invite system (this session, §4)
+
+- ✅ Single invite — `POST /api/invites` creates a personal one-time link (random 24-byte token), sent via the console messaging stub. Owner/co-owner only (`members:manage`).
+- ✅ Accept flow — `/join/[token]`: public preview (`GET /api/join/[token]`), OTP re-verification against the invite's own contact (never the requester's input), then `POST .../accept` creates the User (or reuses an existing one for multi-restaurant) + Membership and signs the person in.
+- ✅ Single-use enforcement — token is dead after consumption (`CONSUMED` status), 404s on reuse. Forwarded links can't be completed by someone else (contact mismatch fails OTP).
+- ✅ Revoke — `POST /api/invites/[id]/revoke`, owner/co-owner only, restaurant-scoped; revoked links 404 immediately.
+- ✅ Bulk invite — `POST /api/invites/bulk` accepts a list of {name, contact, role} rows (admin UI: paste "Name, contact" per line); invalid rows are skipped and reported, valid ones get a personal link each.
+- ✅ Admin UI — `/app/admin/members`: single-invite form, bulk-paste box, pending/consumed/revoked list with revoke action. Linked from the app home for owners/co-owners.
+- ✅ Verified end-to-end against the real DB: created invite → code logged → accepted → new session → reuse blocked (404) → non-admin blocked from inviting (403) → bulk invite with one bad row → revoke → revoked link dead.
+- ⬜ CSV/Excel file upload (current bulk import is paste-a-list, not file parsing) — explicitly listed as MVP-required by §4; the paste-list path satisfies the "skip OCR-migration, do structured bulk" requirement but not a literal file upload yet.
 
 ## Spec section → status
 
@@ -34,7 +46,7 @@ commit as the code it describes.
 |---|------|--------|-------|
 | 1–2 | Vision, design principles | ✅ | Encoded as constraints throughout; see CLAUDE.md. |
 | 3 | Roles & permissions | 🟡 | Modeled + enforcement layer ✅ (`authz` + `guard`, negative tests). Member-management UI ⬜. |
-| 4 | Invite system | 🟡 | Schema + OTP/contact-normalization infra ✅. Invite token gen/accept, revoke, bulk/CSV import ⬜. |
+| 4 | Invite system | 🟡 | Token gen/accept/revoke/bulk-paste ✅, verified end-to-end. CSV file upload ⬜. |
 | 5 | Clock-in identity (WebAuthn/PIN) | ⬜ | Schema ready. WebAuthn reg/auth, PIN, QR, <3s flow ⬜. Geofencing 🚫 (designed-for, not built). |
 | 6.1 | Shifts (week view, open shifts, swaps, availability) | ⬜ | Schema ready. UI + flows ⬜. |
 | 6.2 | Clock-in section + offline + tolerance window | ⬜ | Schema ready (`SyncStatus`, `clientId`, tolerance fields). Service worker + IndexedDB queue ⬜. |
@@ -55,9 +67,9 @@ commit as the code it describes.
 
 ## Suggested next milestones (in order)
 
-1. ✅ **Auth spine** — OTP login, session, restaurant picker (§3.3) built. ⬜ Remaining: provision Postgres + run the first migration, then seed a user to exercise the full login→session flow end-to-end.
+1. ✅ **Auth spine** — OTP login, session, restaurant picker (§3.3), DB provisioned and verified end-to-end.
 2. ✅ **Tier/role middleware + negative tests** (§12.2) — single authorization layer; Bas → 403 proven in tests.
-3. **Invite system** (§4) — single-use tokens, OTP accept (infra ready), revoke, CSV/bulk import.
+3. ✅ **Invite system** (§4) — single-use tokens, OTP accept, revoke, bulk-paste invite, admin UI. ⬜ CSV file upload remains.
 4. **Shifts section** (§6.1) — week view, open shifts, availability, swap flow with tag matching (§7).
 5. **Clock-in** (§5, §6.2) — WebAuthn + PIN, QR, the <3s flow, offline queue + sync.
 6. **Economy/admin** (§6.3) — summary, deviation review, export templates (Fortnox/Visma/CSV), "export all my data".

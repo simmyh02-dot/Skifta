@@ -118,6 +118,45 @@ const sv = {
     logout: "Logga ut",
   },
 
+  invite: {
+    join: {
+      loading: "Laddar inbjudan …",
+      invalidTitle: "Länken fungerar inte",
+      invalidBody:
+        "Inbjudan kan ha gått ut, redan använts, eller blivit återkallad. Be ägaren skicka en ny.",
+      title: "Du är inbjuden till {restaurant}",
+      subtitle: "Hej {name}! Du bjuds in som {role}. Verifiera dina uppgifter för att slutföra.",
+      sendCode: "Skicka verifieringskod",
+      sending: "Skickar …",
+      codeLabel: "Engångskod",
+      verify: "Gå med",
+      verifying: "Går med …",
+      resend: "Skicka ny kod",
+      errorCode: "Fel eller utgången kod. Försök igen.",
+    },
+    admin: {
+      title: "Personal",
+      subtitle: "Bjud in nya medarbetare med personliga, engångslänkar.",
+      singleTitle: "Bjud in en person",
+      namePlaceholder: "Namn",
+      contactPlaceholder: "Telefon eller e-post",
+      send: "Skicka inbjudan",
+      bulkTitle: "Bjud in flera på en gång",
+      bulkHint: "En rad per person: Namn, telefon eller e-post",
+      bulkSend: "Skicka alla",
+      bulkResult: "{created} inbjudningar skickade, {skipped} hoppades över.",
+      errorCreate: "Kunde inte skapa inbjudan. Kontrollera uppgifterna.",
+      revoke: "Återkalla",
+      empty: "Inga inbjudningar än.",
+      status: {
+        PENDING: "Väntar",
+        CONSUMED: "Godkänd",
+        EXPIRED: "Utgången",
+        REVOKED: "Återkallad",
+      },
+    },
+  },
+
   app: {
     nav: {
       schedule: "Schema",

@@ -14,6 +14,7 @@ export function AppHomeView({
   role: string | null;
 }) {
   const { t } = useTranslations();
+  const isAdmin = role === "OWNER" || role === "CO_OWNER";
 
   return (
     <div className="flex min-h-full flex-col">
@@ -43,6 +44,14 @@ export function AppHomeView({
             <p className="mt-3 text-xs text-ink-faint">
               {t(`app.roles.${role}`)}
             </p>
+          )}
+          {isAdmin && (
+            <a
+              href="/app/admin/members"
+              className="mt-5 inline-block text-sm font-medium text-primary hover:text-primary-hover"
+            >
+              {t("invite.admin.title")}
+            </a>
           )}
         </div>
       </main>
