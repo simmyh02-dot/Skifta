@@ -88,6 +88,19 @@ commit as the code it describes.
 - ⬜ Import-my-own-template (CUSTOM column mapping upload) — schema (`ExportTemplate.columnMapping`) ready; upload UI not built. Same file-upload gap as §4 bulk CSV.
 - ⬜ Weekly deviation digest notification (§6.3) — same console-only notification gap as the rest of the app.
 
+## AI payroll draft (this session, §8.2)
+
+- ✅ **Deterministic rules engine** (`src/lib/payroll/engine.ts`) — the numbers are rule-based, not AI (§8.2). Pairs append-only stamps into worked intervals, splits them across local-midnight boundaries (overnight shifts), and applies the restaurant's OB windows + optional overtime as supplements **on top of** base pay (no double-counting). Produces a transparent per-line breakdown (base, each OB window, overtime) that links back to the exact stamp ids — §8.2 spårbarhet. 11 unit tests.
+- ✅ **OB-rule presets** (`src/lib/payroll/rules.ts`, §13) — owner picks a preset template ("Inget OB-tillägg" / "Kväll & helg"), not free-form entry. Stored **versioned** as an `OBRuleSet` row so an approved draft traces to exactly which rules applied.
+- ✅ **AI presentation layer** (`src/lib/ai/payroll-note.ts`) — Claude **Haiku** (`claude-haiku-4-5`, the model the spec specifies §8) writes a short Swedish summary of the *already-computed* draft. The AI only summarises/presents — it computes no number and **never writes to the DB** (build rule #6). Degrades gracefully: with no `ANTHROPIC_API_KEY` it returns a deterministic Swedish note, so the flow runs with zero AI keys. System prompt is prompt-cached (§8.3). 3 tests.
+- ✅ **suggest → confirm → write** (§8, hard rule) — `POST /api/economy/payroll/preview` computes the draft + note and **persists nothing**; `POST .../approve` is the only writer and runs only behind the owner's explicit click, **recomputing server-side** (never trusts client numbers) and writing `PayrollPeriodSummary` rows with the line breakdown. Members with an **unreviewed deviation** (§6.3) or **no rate** are held back and named, never folded in silently. `payroll:manage` (FULL + admin), verified unauth → 401.
+- ✅ **Rates + OB config** — `Membership.hourlyRate` added (nullable `Decimal`; **migration created, not yet applied** to Neon per owner's choice — run `npx prisma migrate deploy` to apply). `GET/POST /api/economy/payroll/rate` (per-employee rate) and `/ruleset` (OB preset) under settings:manage + FULL.
+- ✅ **UI** — new "Löneutkast" tab in `EconomyView`: Generate (AI) → review cards with the transparent breakdown + AI note (AI/fallback badge) + missing-rate/unreviewed flags → Approve & save (confirm-card flow); disclaimer that it's a draft, not a binding payslip. Settings tab gains the OB-preset picker + per-employee rate inputs. This fills the mockup's OB/gross columns that §6.3 deferred.
+- ✅ i18n — full `economy.draft` / `rates` / `obRules` catalogs (sv + en). **66 tests green**; production build passes; all 4 payroll routes registered.
+- ⬜ §8.1 (NL → schedule changes) — the other half of §8; not started.
+- ⬜ §8.3 soft fair-use trial cap (~50 AI calls, flagged not blocked) — note layer is built; the usage counter/flag is not.
+- ⬜ Real OB rates from a specific collective agreement, and the "import my own column template" (CUSTOM) export mapping — presets are illustrative starting points the owner adjusts.
+
 ## Spec section → status
 
 | § | Area | Status | Notes |
@@ -101,8 +114,8 @@ commit as the code it describes.
 | 6.3 | Economy/admin (summary, deviations, export) | 🟡 | Owner UI (4 tabs), hour summary, deviation review (append-only adjust), export gate (unreviewed → blocked), Fortnox/Visma/CSV formats + save-default, export-all-my-data, realtime overview ✅. OB/gross → §8.2; CUSTOM template upload + deviation digest ⬜. |
 | 7 | Competence tags | ✅ | `Tag`/`EmployeeTag` + admin UI (create/delete tags, assign per member) + qualification matching enforced in shift claim/interest/swap-accept. |
 | 8.1 | NL → schedule changes (AI) | ⬜ | Confirm-card flow, Haiku integration ⬜. **Hard rule:** suggest → confirm → write. |
-| 8.2 | Payroll draft (AI) | ⬜ | `PayrollPeriodSummary.lineItems` for transparent breakdown. Rules engine + draft UI ⬜. |
-| 8.3 | AI cost / fair-use | ⬜ | Prompt caching + soft trial cap ⬜. |
+| 8.2 | Payroll draft (AI) | 🟡 | Deterministic OB/overtime engine (traceable line items), Haiku presentation note (graceful no-key fallback), suggest→confirm→write, rates + OB presets, draft UI ✅. Real agreement rates + CUSTOM template ⬜. |
+| 8.3 | AI cost / fair-use | 🟡 | Prompt caching on the note's system prompt ✅. Soft ~50-call trial cap (flag, not block) ⬜. |
 | 9 | Data model | ✅ | See `prisma/schema.prisma`. |
 | 10 | Discreet complexity (UI) | ✅ (principle) | Enforced as a build rule; re-checked per view. |
 | 11 | i18n + mobile-first + landing | ✅ | i18n + landing done. Mobile-first app shells ⬜. |
@@ -121,9 +134,13 @@ commit as the code it describes.
 4. ✅ **Shifts section** (§6.1) — week view, open shifts (both fill modes, server-enforced), swap flow with tag matching (§7), availability, tags admin. ⬜ Escalation cron, notifications, double-booking checks remain.
 5. ✅ **Clock-in** (§5, §6.2) — PIN + WebAuthn identity, QR/kiosk, append-only idempotent stamps, graded tolerance/deviations, own history + hours, offline queue + SW, admin QR/tolerance setup. ⬜ Device re-registration/reset, real-device WebAuthn + <3s field test, cold-start PWA offline remain.
 6. ✅ **Economy/admin** (§6.3) — period summary + per-employee hours, deviation review (append-only adjust), export gate (unreviewed never silent), Fortnox/Visma/CSV formats + save-default, "export all my data". ⬜ OB/gross (→§8.2), CUSTOM template upload, deviation digest remain.
-7. **AI** (§8) — schedule NL + payroll draft (the OB/gross half of the §6.3 mockup lives here), both behind the suggest→confirm→write gate.
+7. 🟡 **AI** (§8) — payroll draft (§8.2) ✅: deterministic OB/gross engine, Haiku note, suggest→confirm→write, rates + OB presets (fills the §6.3 mockup's OB/gross). ⬜ NL→schedule (§8.1) and the §8.3 soft trial cap remain.
 8. **Billing** (§12) — Stripe checkout, 30-day trial lifecycle, freeze-on-expiry.
 9. **PWA** (§14.3) — manifest + service worker (reuses the offline-queue SW).
+
+## Pending DB migration (not yet applied)
+
+- `20260627000000_add_membership_hourly_rate` adds the nullable `Membership.hourlyRate` column for §8.2. The migration file + Prisma client are committed, but it has **not** been run against the Neon DB (owner's choice). Apply with `npx prisma migrate deploy` (or it runs automatically on the next Vercel deploy if the build step includes it). Until applied, the payroll-rate endpoints will error against the live DB; everything else works.
 
 ## Open items to confirm with the owner
 

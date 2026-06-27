@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "@/i18n/LocaleProvider";
 import { Logo } from "@/components/ui/Logo";
 import { LangToggle } from "@/components/landing/LangToggle";
@@ -57,7 +57,7 @@ type Overview = {
   };
 };
 
-type Tab = "payroll" | "timeclock" | "deviations" | "settings";
+type Tab = "payroll" | "draft" | "timeclock" | "deviations" | "settings";
 
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
@@ -199,7 +199,7 @@ export function EconomyView({
         </div>
 
         <nav className="mt-5 flex items-center gap-1 overflow-x-auto border-b border-border text-sm">
-          {(["payroll", "timeclock", "deviations", "settings"] as Tab[]).map((key) => (
+          {(["payroll", "draft", "timeclock", "deviations", "settings"] as Tab[]).map((key) => (
             <button
               key={key}
               type="button"
@@ -210,7 +210,7 @@ export function EconomyView({
                   : "border-transparent text-ink-muted hover:text-ink"
               }`}
             >
-              {t(`economy.tabs.${key}`)}
+              {key === "draft" ? t("economy.draft.tab") : t(`economy.tabs.${key}`)}
               {key === "deviations" && data.totals.openDeviations > 0 && (
                 <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-xs font-semibold text-white">
                   {data.totals.openDeviations}
@@ -227,6 +227,7 @@ export function EconomyView({
               onReviewAll={() => setTab("deviations")}
             />
           )}
+          {tab === "draft" && <DraftTab period={period} />}
           {tab === "timeclock" && <TimeClockTab onShift={data.onShift} />}
           {tab === "deviations" && (
             <DeviationsTab deviations={data.deviations} onAct={actOnDeviation} />
@@ -373,6 +374,228 @@ function TimeClockTab({ onShift }: { onShift: OnShiftEntry[] }) {
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+// ─────────────────────────── Pay draft tab (§8.2) ───────────────────
+
+type DraftLine = {
+  type: "base" | "ob" | "overtime";
+  hours: number;
+  rate: number;
+  amount: number;
+  label?: string;
+  windowId?: string;
+  percent?: number;
+};
+type MemberDraft = {
+  userId: string;
+  name: string;
+  rate: number | null;
+  missingRate: boolean;
+  unreviewed: boolean;
+  draft: { baseHours: number; obHours: number; grossAmount: number; lines: DraftLine[] };
+};
+type Preview = {
+  ruleSet: { id: string; name: string };
+  members: MemberDraft[];
+  note: { text: string; source: "ai" | "fallback" };
+};
+type ApproveResult = {
+  approved: string[];
+  skipped: { userId: string; reason: "unreviewed" | "missing_rate" }[];
+};
+
+function fmtKr(n: number) {
+  return Math.round(n).toLocaleString("sv-SE");
+}
+
+function DraftTab({ period }: { period: string }) {
+  const { t } = useTranslations();
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [result, setResult] = useState<ApproveResult | null>(null);
+
+  async function generate() {
+    setBusy(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/economy/payroll/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ period }),
+      });
+      if (res.ok) setPreview(await res.json());
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function approve() {
+    setApproving(true);
+    try {
+      const res = await fetch("/api/economy/payroll/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ period }),
+      });
+      if (res.ok) {
+        const body = await res.json();
+        setResult({ approved: body.approved, skipped: body.skipped });
+      }
+    } finally {
+      setApproving(false);
+    }
+  }
+
+  const nameById = (id: string) => preview?.members.find((m) => m.userId === id)?.name ?? id;
+  const skippedUnreviewed = result?.skipped.filter((s) => s.reason === "unreviewed") ?? [];
+  const skippedMissingRate = result?.skipped.filter((s) => s.reason === "missing_rate") ?? [];
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-xl">
+          <h2 className="font-semibold text-ink">{t("economy.draft.title")}</h2>
+          <p className="mt-1 text-sm text-ink-muted">{t("economy.draft.hint")}</p>
+          {preview && (
+            <p className="mt-1 text-xs text-ink-faint">
+              {t("economy.draft.ruleSet", { name: preview.ruleSet.name })}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={generate}
+          disabled={busy}
+          className="h-11 shrink-0 rounded-full bg-primary px-5 text-sm font-semibold text-primary-ink hover:bg-primary-hover disabled:opacity-60"
+        >
+          {busy
+            ? t("economy.draft.generating")
+            : preview
+              ? t("economy.draft.regenerate")
+              : t("economy.draft.generate")}
+        </button>
+      </div>
+
+      {preview && (
+        <>
+          {/* AI presentation note */}
+          <div className="mt-5 rounded-2xl bg-primary-soft p-4 ring-1 ring-primary/15">
+            <div className="mb-1 flex items-center gap-2">
+              <span className="rounded-full bg-primary px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-primary-ink">
+                {preview.note.source === "ai" ? t("economy.draft.aiBadge") : t("economy.draft.fallbackBadge")}
+              </span>
+            </div>
+            <p className="text-sm text-ink">{preview.note.text}</p>
+          </div>
+
+          {/* Per-employee review cards (transparent breakdown, §8.2) */}
+          <div className="mt-5 flex flex-col gap-3">
+            {preview.members.length === 0 && (
+              <p className="rounded-2xl bg-surface p-6 text-center text-sm text-ink-faint ring-1 ring-border">
+                {t("economy.draft.empty")}
+              </p>
+            )}
+            {preview.members.map((m) => (
+              <div key={m.userId} className="rounded-2xl bg-surface p-4 ring-1 ring-border">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <Avatar name={m.name} size="sm" />
+                    <div>
+                      <p className="font-medium text-ink">{m.name}</p>
+                      <p className="text-xs text-ink-faint">
+                        {m.rate != null ? t("economy.draft.perHour", { n: m.rate }) : t("economy.draft.missingRate")}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    {m.missingRate ? (
+                      <span className="text-sm font-medium text-accent">{t("economy.draft.missingRate")}</span>
+                    ) : (
+                      <p className="font-display text-xl font-bold text-ink">
+                        {t("economy.draft.gross", { n: fmtKr(m.draft.grossAmount) })}
+                      </p>
+                    )}
+                    <p className="text-xs text-ink-faint">
+                      {fmtHours(m.draft.baseHours)} {t("economy.draft.colBase")} · {fmtHours(m.draft.obHours)} {t("economy.draft.colOb")}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Transparent line breakdown */}
+                <div className="mt-3 flex flex-col gap-1 border-t border-border pt-2 text-sm">
+                  {m.draft.lines.map((line, i) => (
+                    <div key={i} className="flex items-center justify-between text-ink-muted">
+                      <span>
+                        {line.type === "base" && t("economy.draft.lineBase")}
+                        {line.type === "ob" && line.label}
+                        {line.type === "overtime" && t("economy.draft.lineOvertime")}
+                        {line.percent ? ` +${Math.round(line.percent * 100)}%` : ""}
+                        <span className="text-ink-faint"> · {fmtHours(line.hours)} h</span>
+                      </span>
+                      {!m.missingRate && (
+                        <span className="tabular-nums text-ink">{t("economy.draft.gross", { n: fmtKr(line.amount) })}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {(m.unreviewed || m.missingRate) && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {m.unreviewed && (
+                      <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent-ink">
+                        {t("economy.draft.unreviewedFlag")}
+                      </span>
+                    )}
+                    {m.missingRate && (
+                      <span className="rounded-full bg-surface-2 px-2.5 py-1 text-xs text-ink-muted">
+                        {t("economy.draft.setRate")}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Confirm → write */}
+          {preview.members.length > 0 && (
+            <div className="mt-5">
+              <button
+                type="button"
+                onClick={approve}
+                disabled={approving}
+                className="h-12 rounded-full bg-primary px-6 text-sm font-semibold text-primary-ink hover:bg-primary-hover disabled:opacity-60"
+              >
+                {approving ? t("economy.draft.approving") : t("economy.draft.approve")}
+              </button>
+              <p className="mt-2 text-xs text-ink-faint">{t("economy.draft.disclaimer")}</p>
+            </div>
+          )}
+
+          {result && (
+            <div className="mt-4 rounded-2xl bg-success-soft p-4 ring-1 ring-primary/15">
+              <p className="flex items-center gap-2 font-semibold text-primary">
+                <CheckIcon /> {t("economy.draft.approvedTitle", { count: result.approved.length })}
+              </p>
+              {skippedUnreviewed.length > 0 && (
+                <p className="mt-1 text-sm text-accent-ink">
+                  {t("economy.draft.skippedUnreviewed", { names: skippedUnreviewed.map((s) => nameById(s.userId)).join(", ") })}
+                </p>
+              )}
+              {skippedMissingRate.length > 0 && (
+                <p className="mt-1 text-sm text-ink-muted">
+                  {t("economy.draft.skippedMissingRate", { names: skippedMissingRate.map((s) => nameById(s.userId)).join(", ") })}
+                </p>
+              )}
+              <p className="mt-1 text-sm text-ink-muted">{t("economy.draft.approvedNote")}</p>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -591,6 +814,9 @@ function SettingsTab({ period, defaultFormat }: { period: string; defaultFormat:
 
   return (
     <div className="flex flex-col gap-6">
+      <ObRulesSection />
+      <RatesSection />
+
       <section className="rounded-2xl bg-surface p-5 ring-1 ring-border">
         <h2 className="font-semibold text-ink">{t("economy.exportPanel.title")}</h2>
         <p className="mt-1 text-sm text-ink-muted">{t("economy.exportPanel.hint")}</p>
@@ -673,6 +899,144 @@ function SettingsTab({ period, defaultFormat }: { period: string; defaultFormat:
           </a>
         </div>
       </section>
+    </div>
+  );
+}
+
+function ObRulesSection() {
+  const { t } = useTranslations();
+  const [presets, setPresets] = useState<{ id: string; name: string }[]>([]);
+  const [activeId, setActiveId] = useState<string>("none");
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/economy/payroll/ruleset")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d) {
+          setPresets(d.presets);
+          setActiveId(d.activeId);
+        }
+      });
+  }, []);
+
+  async function pick(id: string) {
+    setActiveId(id);
+    const res = await fetch("/api/economy/payroll/ruleset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ presetId: id }),
+    });
+    if (res.ok) {
+      setSavedMsg(t("economy.obRules.saved"));
+      setTimeout(() => setSavedMsg(null), 2500);
+    }
+  }
+
+  return (
+    <section className="rounded-2xl bg-surface p-5 ring-1 ring-border">
+      <h2 className="font-semibold text-ink">{t("economy.obRules.title")}</h2>
+      <p className="mt-1 text-sm text-ink-muted">{t("economy.obRules.hint")}</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {presets.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => pick(p.id)}
+            className={`h-10 rounded-full px-4 text-sm font-medium transition-colors ${
+              activeId === p.id ? "bg-primary text-primary-ink" : "bg-surface-2 text-ink-muted hover:text-ink"
+            }`}
+          >
+            {p.name}
+          </button>
+        ))}
+        {savedMsg && <span className="self-center text-sm text-primary">{savedMsg}</span>}
+      </div>
+    </section>
+  );
+}
+
+function RatesSection() {
+  const { t } = useTranslations();
+  const [members, setMembers] = useState<{ userId: string; name: string; hourlyRate: number | null }[]>([]);
+  const [savedId, setSavedId] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetch("/api/economy/payroll/rate")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setMembers(d.members));
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function save(userId: string, value: string) {
+    const rate = Number(value);
+    if (!Number.isFinite(rate) || rate < 0) return;
+    const res = await fetch("/api/economy/payroll/rate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, hourlyRate: rate }),
+    });
+    if (res.ok) {
+      setSavedId(userId);
+      setTimeout(() => setSavedId((id) => (id === userId ? null : id)), 2000);
+      load();
+    }
+  }
+
+  return (
+    <section className="rounded-2xl bg-surface p-5 ring-1 ring-border">
+      <h2 className="font-semibold text-ink">{t("economy.rates.title")}</h2>
+      <p className="mt-1 text-sm text-ink-muted">{t("economy.rates.hint")}</p>
+      <div className="mt-4 flex flex-col gap-2">
+        {members.map((m) => (
+          <RateRow
+            key={m.userId}
+            member={m}
+            saved={savedId === m.userId}
+            onSave={(v) => save(m.userId, v)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RateRow({
+  member,
+  saved,
+  onSave,
+}: {
+  member: { userId: string; name: string; hourlyRate: number | null };
+  saved: boolean;
+  onSave: (value: string) => void;
+}) {
+  const { t } = useTranslations();
+  const [value, setValue] = useState(member.hourlyRate != null ? String(member.hourlyRate) : "");
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2.5">
+        <Avatar name={member.name} size="sm" />
+        <span className="text-sm font-medium text-ink">{member.name}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value.replace(/[^\d.]/g, ""))}
+          inputMode="decimal"
+          placeholder={t("economy.rates.placeholder")}
+          className="h-10 w-24 rounded-lg border border-border bg-surface px-3 text-right text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        />
+        <button
+          type="button"
+          onClick={() => onSave(value)}
+          className="h-10 rounded-full border border-border-strong px-3 text-sm font-medium text-ink hover:bg-surface-2"
+        >
+          {saved ? t("economy.rates.saved") : t("economy.rates.save")}
+        </button>
+      </div>
     </div>
   );
 }

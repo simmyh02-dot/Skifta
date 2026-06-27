@@ -251,6 +251,7 @@ model Membership {
   role           Role
   isBillingOwner Boolean   @default(false)
   localLabel     String? // restaurant-local nickname for the person (§4)
+  hourlyRate     Decimal?  @db.Decimal(10, 2) // base kr/h, for the §8.2 payroll draft. Null = not set yet.
   createdAt      DateTime  @default(now())
   endedAt        DateTime? // set when the employee leaves (§13)
 
