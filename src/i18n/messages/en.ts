@@ -203,6 +203,23 @@ const en: Messages = {
       acceptedBy: "{name} accepted — waiting for approval",
       requestedBy: "{name} can't work this shift",
     },
+    ai: {
+      button: "AI scheduling",
+      title: "Add shifts with text",
+      disclaimer: "The AI suggests — it never writes to the schedule until you approve.",
+      placeholder: "e.g. \"Put Erik Tue–Thu next week, same as last week\"",
+      propose: "Propose",
+      loading: "Interpreting …",
+      proposalTitle: "Proposal — review before approving",
+      none: "No shifts could be interpreted from the text.",
+      unavailable: "AI scheduling isn't configured right now.",
+      error: "Something went wrong. Try again.",
+      approve: "Approve",
+      editManually: "Edit manually",
+      doneEditing: "Done editing",
+      done: "{created} shifts created.",
+      doneSkipped: "({skipped} couldn't be created and were skipped.)",
+    },
   },
 
   availability: {

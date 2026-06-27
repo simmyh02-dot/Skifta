@@ -37,6 +37,7 @@ export default async function SchedulePage() {
       initialShifts={JSON.parse(JSON.stringify(shifts))}
       openShiftFill={restaurant?.openShiftFill ?? "MANUAL_PICK"}
       canClock={can(ctx, "clock:viewOwn")}
+      canAiSchedule={can(ctx, "ai:schedule")}
     />
   );
 }

@@ -39,6 +39,7 @@ export function ScheduleView({
   initialShifts,
   openShiftFill,
   canClock = false,
+  canAiSchedule = false,
 }: {
   userId: string;
   role: string;
@@ -46,6 +47,7 @@ export function ScheduleView({
   initialShifts: ShiftDTO[];
   openShiftFill: "FIRST_COME" | "MANUAL_PICK";
   canClock?: boolean;
+  canAiSchedule?: boolean;
 }) {
   const { t, m } = useTranslations();
   const isAdmin = role === "OWNER" || role === "CO_OWNER";
@@ -55,6 +57,7 @@ export function ScheduleView({
   const [fillMode, setFillMode] = useState(openShiftFill);
   const [members, setMembers] = useState<Member[] | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [showAi, setShowAi] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
@@ -163,6 +166,15 @@ export function ScheduleView({
               >
                 {t("schedule.nextWeek")} →
               </button>
+              {isAdmin && canAiSchedule && (
+                <button
+                  type="button"
+                  onClick={() => setShowAi((s) => !s)}
+                  className="h-9 rounded-full border border-border-strong px-3 text-sm text-ink hover:bg-surface-2"
+                >
+                  {t("schedule.ai.button")}
+                </button>
+              )}
               {isAdmin && (
                 <Button size="md" onClick={() => setShowForm((s) => !s)}>
                   {t("schedule.newShift")}
@@ -170,6 +182,17 @@ export function ScheduleView({
               )}
             </div>
           </div>
+
+          {showAi && isAdmin && canAiSchedule && (
+            <AiScheduleAssistant
+              members={members ?? []}
+              onDone={async () => {
+                setShowAi(false);
+                await refresh();
+              }}
+              onCancel={() => setShowAi(false)}
+            />
+          )}
 
           {showForm && isAdmin && (
             <NewShiftForm
@@ -609,5 +632,246 @@ function NewShiftForm({
         </button>
       </div>
     </form>
+  );
+}
+
+type ProposedRow = {
+  memberId: string | null;
+  memberName: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  requiredTags: string[];
+  ambiguous: boolean;
+  note: string;
+};
+
+function AiScheduleAssistant({
+  members,
+  onDone,
+  onCancel,
+}: {
+  members: Member[];
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslations();
+  const [instruction, setInstruction] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<"unavailable" | "error" | null>(null);
+  const [rows, setRows] = useState<ProposedRow[] | null>(null);
+  const [editable, setEditable] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [result, setResult] = useState<{ created: number; skipped: number } | null>(null);
+
+  const inputClass =
+    "h-9 rounded-lg border border-border bg-surface px-2 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
+
+  async function submitInstruction(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setRows(null);
+    setResult(null);
+    try {
+      const res = await fetch("/api/schedule/ai/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instruction }),
+      });
+      if (res.status === 503) {
+        setError("unavailable");
+        return;
+      }
+      if (!res.ok) {
+        setError("error");
+        return;
+      }
+      const data = await res.json();
+      setRows(data.shifts ?? []);
+      setEditable(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function updateRow(i: number, patch: Partial<ProposedRow>) {
+    setRows((prev) => (prev ? prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)) : prev));
+  }
+
+  function removeRow(i: number) {
+    setRows((prev) => (prev ? prev.filter((_, idx) => idx !== i) : prev));
+  }
+
+  async function approve() {
+    if (!rows || rows.length === 0) return;
+    setApproving(true);
+    try {
+      const res = await fetch("/api/schedule/ai/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shifts: rows.map((r) => ({
+            memberId: r.memberId,
+            date: r.date,
+            startTime: r.startTime,
+            endTime: r.endTime,
+            requiredTags: r.requiredTags,
+          })),
+        }),
+      });
+      if (!res.ok) {
+        setError("error");
+        return;
+      }
+      const data = await res.json();
+      setResult({ created: data.created ?? 0, skipped: Array.isArray(data.skipped) ? data.skipped.length : 0 });
+      setRows(null);
+    } finally {
+      setApproving(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 flex flex-col gap-3 rounded-2xl bg-surface p-4 shadow-sm ring-1 ring-border">
+      <p className="text-sm font-medium text-ink">{t("schedule.ai.title")}</p>
+      <p className="text-xs text-ink-faint">{t("schedule.ai.disclaimer")}</p>
+
+      {!rows && !result && (
+        <form onSubmit={submitInstruction} className="flex flex-col gap-2 sm:flex-row">
+          <input
+            value={instruction}
+            onChange={(e) => setInstruction(e.target.value)}
+            placeholder={t("schedule.ai.placeholder")}
+            className={`${inputClass} flex-1`}
+            required
+          />
+          <div className="flex gap-2">
+            <Button type="submit" disabled={loading}>
+              {loading ? t("schedule.ai.loading") : t("schedule.ai.propose")}
+            </Button>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="h-9 rounded-full border border-border-strong px-4 text-sm text-ink hover:bg-surface-2"
+            >
+              {t("schedule.form.cancel")}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {error === "unavailable" && <p className="text-sm text-accent">{t("schedule.ai.unavailable")}</p>}
+      {error === "error" && <p className="text-sm text-accent">{t("schedule.ai.error")}</p>}
+
+      {rows && (
+        <>
+          <p className="text-sm font-medium text-ink">{t("schedule.ai.proposalTitle")}</p>
+          {rows.length === 0 && <p className="text-sm text-ink-faint">{t("schedule.ai.none")}</p>}
+          <div className="flex flex-col gap-2">
+            {rows.map((row, i) => (
+              <div
+                key={i}
+                className={`flex flex-col gap-2 rounded-lg p-2 ring-1 sm:flex-row sm:flex-wrap sm:items-center ${
+                  row.ambiguous ? "bg-accent/10 ring-accent/40" : "bg-surface-2 ring-border"
+                }`}
+              >
+                {editable ? (
+                  <>
+                    <select
+                      value={row.memberId ?? ""}
+                      onChange={(e) => updateRow(i, { memberId: e.target.value || null })}
+                      className={inputClass}
+                    >
+                      <option value="">{t("schedule.form.assignOpen")}</option>
+                      {members.map((m) => (
+                        <option key={m.userId} value={m.userId}>
+                          {m.displayName}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="date"
+                      value={row.date}
+                      onChange={(e) => updateRow(i, { date: e.target.value })}
+                      className={inputClass}
+                    />
+                    <input
+                      type="time"
+                      value={row.startTime}
+                      onChange={(e) => updateRow(i, { startTime: e.target.value })}
+                      className={inputClass}
+                    />
+                    <input
+                      type="time"
+                      value={row.endTime}
+                      onChange={(e) => updateRow(i, { endTime: e.target.value })}
+                      className={inputClass}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeRow(i)}
+                      className="h-9 rounded-full border border-border-strong px-3 text-xs text-ink hover:bg-surface"
+                    >
+                      {t("schedule.actions.delete")}
+                    </button>
+                  </>
+                ) : (
+                  <p className="flex-1 text-sm text-ink">
+                    <span className="font-medium">
+                      {row.memberId ? members.find((m) => m.userId === row.memberId)?.displayName ?? row.memberName : t("schedule.form.assignOpen")}
+                    </span>{" "}
+                    — {row.date} {row.startTime}–{row.endTime}
+                    {row.requiredTags.length > 0 && ` (${row.requiredTags.join(", ")})`}
+                  </p>
+                )}
+                {row.ambiguous && row.note && <p className="w-full text-xs text-accent">{row.note}</p>}
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={approve} disabled={approving || rows.length === 0}>
+              {t("schedule.ai.approve")}
+            </Button>
+            <button
+              type="button"
+              onClick={() => setEditable((e) => !e)}
+              className="h-9 rounded-full border border-border-strong px-3 text-sm text-ink hover:bg-surface-2"
+            >
+              {editable ? t("schedule.ai.doneEditing") : t("schedule.ai.editManually")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setRows(null);
+                onCancel();
+              }}
+              className="h-9 rounded-full border border-border-strong px-3 text-sm text-ink hover:bg-surface-2"
+            >
+              {t("schedule.form.cancel")}
+            </button>
+          </div>
+        </>
+      )}
+
+      {result && (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-ink">
+            {t("schedule.ai.done", { created: String(result.created) })}
+            {result.skipped > 0 && ` ${t("schedule.ai.doneSkipped", { skipped: String(result.skipped) })}`}
+          </p>
+          <Button
+            onClick={() => {
+              setResult(null);
+              setInstruction("");
+              onDone();
+            }}
+          >
+            {t("schedule.form.save")}
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }

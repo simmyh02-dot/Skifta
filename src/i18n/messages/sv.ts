@@ -205,6 +205,23 @@ const sv = {
       acceptedBy: "{name} har accepterat — väntar på godkännande",
       requestedBy: "{name} kan inte jobba detta pass",
     },
+    ai: {
+      button: "AI-schemaläggning",
+      title: "Lägg pass med text",
+      disclaimer: "AI:n föreslår — den skriver aldrig till schemat förrän du godkänner.",
+      placeholder: "t.ex. \"Lägg Erik tis–tors nästa vecka, samma som förra veckan\"",
+      propose: "Föreslå",
+      loading: "Tolkar …",
+      proposalTitle: "Förslag — granska innan du godkänner",
+      none: "Inga pass kunde tolkas ur texten.",
+      unavailable: "AI-schemaläggning är inte konfigurerad just nu.",
+      error: "Något gick fel. Försök igen.",
+      approve: "Godkänn",
+      editManually: "Ändra manuellt",
+      doneEditing: "Klar med ändringar",
+      done: "{created} pass skapades.",
+      doneSkipped: "({skipped} kunde inte skapas och hoppades över.)",
+    },
   },
 
   availability: {

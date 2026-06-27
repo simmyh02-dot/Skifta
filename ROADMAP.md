@@ -101,6 +101,16 @@ commit as the code it describes.
 - ⬜ §8.3 soft fair-use trial cap (~50 AI calls, flagged not blocked) — note layer is built; the usage counter/flag is not.
 - ⬜ Real OB rates from a specific collective agreement, and the "import my own column template" (CUSTOM) export mapping — presets are illustrative starting points the owner adjusts.
 
+## AI scheduling (this session, §8.1)
+
+- ✅ **NL → structured proposal** (`src/lib/ai/schedule-assistant.ts`) — Claude Haiku with **forced tool-use** (not free text) so the model always returns a typed shift list, never prose to parse. Context fed to the model is real: active members + their tags, and the previous week's actual shifts (so "samma som förra veckan" has something concrete to copy from), per spec §8.1 step 2.
+- ✅ **Ambiguity surfaces, never hides** — each proposed row carries `ambiguous`/`note`; a member name that doesn't match anyone in the restaurant is flagged (never silently dropped or fuzzy-guessed) via `resolveMembers`. Unit-tested.
+- ✅ **suggest → confirm → write** (§8, hard rule) — `POST /api/schedule/ai/preview` computes the proposal and **persists nothing**; `POST /api/schedule/ai/approve` is the only writer, runs only behind the owner's explicit click, and **re-validates every row server-side** (real member of this restaurant, valid date/time) rather than trusting the client. `ai:schedule` (FULL + admin).
+- ✅ **No fabricated fallback** — unlike §8.2's deterministic numbers, there's no honest way to "guess" a schedule interpretation without a model, so with no `ANTHROPIC_API_KEY` the preview route returns 503 `ai_unavailable` and the UI says so plainly, rather than inventing a fake parse.
+- ✅ **UI** — `/app/schedule` gets an "AI-schemaläggning" entry next to "Nytt pass" (owner/co-owner, FULL tier only): free-text box → review card listing every proposed shift **by name/date/time** (not a summary sentence, per §8.1 design requirement) → "Ändra manuellt" makes the list inline-editable → "Godkänn" (writes) / "Avbryt" (discards). Ambiguous rows are visually flagged with the model's own note.
+- ✅ i18n — `schedule.ai` catalog (sv + en). **69 tests green**; production build passes; both AI routes registered.
+- ⬜ §8.3 soft fair-use trial cap (~50 AI calls, flagged not blocked) — still not built, same gap as §8.2.
+
 ## Spec section → status
 
 | § | Area | Status | Notes |
@@ -113,7 +123,7 @@ commit as the code it describes.
 | 6.2 | Clock-in section + offline + tolerance window | 🟡 | Stamp (append-only, idempotent), own history + hours, graded tolerance/deviations, IndexedDB queue + SW shell cache ✅ (verified). Cold-start PWA offline boot + deviation digest ⬜. |
 | 6.3 | Economy/admin (summary, deviations, export) | 🟡 | Owner UI (4 tabs), hour summary, deviation review (append-only adjust), export gate (unreviewed → blocked), Fortnox/Visma/CSV formats + save-default, export-all-my-data, realtime overview ✅. OB/gross → §8.2; CUSTOM template upload + deviation digest ⬜. |
 | 7 | Competence tags | ✅ | `Tag`/`EmployeeTag` + admin UI (create/delete tags, assign per member) + qualification matching enforced in shift claim/interest/swap-accept. |
-| 8.1 | NL → schedule changes (AI) | ⬜ | Confirm-card flow, Haiku integration ⬜. **Hard rule:** suggest → confirm → write. |
+| 8.1 | NL → schedule changes (AI) | ✅ | Haiku forced tool-use → structured proposal, confirm-card UI (exact list, editable, ambiguity shown), suggest→confirm→write, server-side re-validation on approve. No-key → explicit 503, no fake fallback. |
 | 8.2 | Payroll draft (AI) | 🟡 | Deterministic OB/overtime engine (traceable line items), Haiku presentation note (graceful no-key fallback), suggest→confirm→write, rates + OB presets, draft UI ✅. Real agreement rates + CUSTOM template ⬜. |
 | 8.3 | AI cost / fair-use | 🟡 | Prompt caching on the note's system prompt ✅. Soft ~50-call trial cap (flag, not block) ⬜. |
 | 9 | Data model | ✅ | See `prisma/schema.prisma`. |
@@ -134,7 +144,7 @@ commit as the code it describes.
 4. ✅ **Shifts section** (§6.1) — week view, open shifts (both fill modes, server-enforced), swap flow with tag matching (§7), availability, tags admin. ⬜ Escalation cron, notifications, double-booking checks remain.
 5. ✅ **Clock-in** (§5, §6.2) — PIN + WebAuthn identity, QR/kiosk, append-only idempotent stamps, graded tolerance/deviations, own history + hours, offline queue + SW, admin QR/tolerance setup. ⬜ Device re-registration/reset, real-device WebAuthn + <3s field test, cold-start PWA offline remain.
 6. ✅ **Economy/admin** (§6.3) — period summary + per-employee hours, deviation review (append-only adjust), export gate (unreviewed never silent), Fortnox/Visma/CSV formats + save-default, "export all my data". ⬜ OB/gross (→§8.2), CUSTOM template upload, deviation digest remain.
-7. 🟡 **AI** (§8) — payroll draft (§8.2) ✅: deterministic OB/gross engine, Haiku note, suggest→confirm→write, rates + OB presets (fills the §6.3 mockup's OB/gross). ⬜ NL→schedule (§8.1) and the §8.3 soft trial cap remain.
+7. 🟡 **AI** (§8) — payroll draft (§8.2) ✅ and NL→schedule (§8.1) ✅: deterministic OB/gross engine + Haiku note for payroll, Haiku forced tool-use → confirm-card for scheduling, both suggest→confirm→write. ⬜ §8.3 soft trial cap remains.
 8. **Billing** (§12) — Stripe checkout, 30-day trial lifecycle, freeze-on-expiry.
 9. **PWA** (§14.3) — manifest + service worker (reuses the offline-queue SW).
 
