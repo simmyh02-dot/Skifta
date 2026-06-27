@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getAccessContext } from "@/lib/guard";
+import { can } from "@/lib/authz";
 import { listWeek } from "@/lib/shifts";
 import { startOfWeek } from "@/lib/week";
 import { prisma } from "@/lib/prisma";
@@ -35,6 +36,7 @@ export default async function SchedulePage() {
       initialWeekStart={weekStart.toISOString()}
       initialShifts={JSON.parse(JSON.stringify(shifts))}
       openShiftFill={restaurant?.openShiftFill ?? "MANUAL_PICK"}
+      canClock={can(ctx, "clock:viewOwn")}
     />
   );
 }

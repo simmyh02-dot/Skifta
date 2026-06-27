@@ -73,3 +73,39 @@ export function ArrowDownIcon(props: IconProps) {
     </Base>
   );
 }
+
+export function PersonIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <circle cx="12" cy="8" r="3.75" />
+      <path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" />
+    </Base>
+  );
+}
+
+export function ChartIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M5 20V11M12 20V4M19 20v-6" />
+    </Base>
+  );
+}
+
+export function QrIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="3.5" y="3.5" width="6" height="6" rx="1" />
+      <rect x="14.5" y="3.5" width="6" height="6" rx="1" />
+      <rect x="3.5" y="14.5" width="6" height="6" rx="1" />
+      <path d="M14.5 14.5h2.5v2.5M20.5 14.5v.01M20.5 20.5v.01M17 20.5h.01M20.5 17.5h.01" />
+    </Base>
+  );
+}
+
+export function ScanIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2" />
+    </Base>
+  );
+}

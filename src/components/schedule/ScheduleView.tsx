@@ -38,12 +38,14 @@ export function ScheduleView({
   initialWeekStart,
   initialShifts,
   openShiftFill,
+  canClock = false,
 }: {
   userId: string;
   role: string;
   initialWeekStart: string;
   initialShifts: ShiftDTO[];
   openShiftFill: "FIRST_COME" | "MANUAL_PICK";
+  canClock?: boolean;
 }) {
   const { t, m } = useTranslations();
   const isAdmin = role === "OWNER" || role === "CO_OWNER";
@@ -119,6 +121,11 @@ export function ScheduleView({
             <a href="/app/availability" className="hover:text-primary">
               {t("availability.title")}
             </a>
+            {canClock && (
+              <a href="/app/clock" className="hover:text-primary">
+                {t("app.nav.clock")}
+              </a>
+            )}
             {isAdmin && (
               <a href="/app/admin/members" className="hover:text-primary">
                 {t("invite.admin.title")}

@@ -55,6 +55,25 @@ commit as the code it describes.
 - ⬜ Double-booking prevention (assigning/claiming a shift that overlaps another shift the same person already has) is not checked.
 - 🔧 Schema addition: `ShiftInterest` model (manual-pick interest list) — wasn't in the original §9 model set, added this session with its own migration.
 
+## Clock-in section (this session, §5/§6.2)
+
+- ✅ Stamp endpoint — `POST /api/clock/stamp`, **public by design**: place is proven by the QR/kiosk token, identity by PIN or WebAuthn — no prior login. **Append-only** `ClockEvent`, **idempotent on `clientId`** (replay → `duplicate:true`, never a second row), direction auto-toggles from the last stamp. Verified end-to-end against the real DB.
+- ✅ Place proof — stateless HMAC clock token (`src/lib/clock-token.ts`, no schema migration); tampered/forged tokens → 400. The QR encodes `/clock/<token>`.
+- ✅ **Tier gate enforced server-side** — clock-in is FULL only; a Bas restaurant's kiosk token → **403 `tier_locked`** (the kiosk has no session/role, so the tier is checked on the restaurant directly). Proven end-to-end.
+- ✅ PIN method (§5 method 2) — set/replace own PIN (`POST /api/clock/pin`), hashed with scrypt; kiosk PIN entry resolves to the member restaurant-scoped, all hashes checked to avoid an early-exit timing signal.
+- ✅ WebAuthn method (§5 method 1) — `@simplewebauthn` v13. Registration while signed in (own device, `register/options`+`verify`); **discoverable** kiosk authentication (`auth/options`, verified inside the stamp). Many credentials per user (new/lost phone). Only the public credential is stored. **Built + typechecks + build passes; needs real-device + HTTPS field verification** (Face ID/Touch ID can't be exercised here).
+- ✅ Tolerance window + graded deviations (§6.2) — `src/lib/deviations.ts`: `|Δ| ≤ low` = none, `≤ high` = LOW, else HIGH; **repeated same-direction pattern escalates to HIGH**. A stamp is matched to the day's assigned shift by closest boundary; an out-of-tolerance stamp opens an OPEN `Deviation` **assigned to an owner** (§6.3). Unit-tested + verified (90-min-late IN → HIGH/OPEN, owner-assigned).
+- ✅ Own clock view — `/app/clock` (`ClockView`): week history + **accumulated hours** (paired IN→OUT, `accumulateHours`) + still-clocked-in indicator; device/PIN setup. No access to others' stamps or economy data (§6.2).
+- ✅ Kiosk — `/clock/[token]` (`ClockKiosk`), public, outside the `/app` proxy: big tap-to-stamp (WebAuthn) + PIN pad, green check + haptic, invalid/tier-locked states. Verified it renders (200 + localized invalid message).
+- ✅ Offline resilience (§6.2) — IndexedDB queue (`src/lib/clock-queue.ts`) + flush-on-reconnect (`useSyncExternalStore` online status) + service worker shell cache (`public/clock-sw.js`). PIN stamps queue when offline and replay idempotently; calm "we'll sync" message, never an error. (WebAuthn needs a live challenge, so offline stamping is the PIN path.)
+- ✅ Admin setup — `/app/clock/setup` (`ClockAdminView`): printable **QR** (`qrcode`) + copyable kiosk link + configurable tolerance window (`POST /api/clock/settings`, settings:manage + FULL).
+- ✅ UI aligned to the design references (`Design references for claude/`) — kiosk reworked to the two-column Scandinavian layout (PIN keypad + dot indicators, persistent "scan with your phone" QR/Face ID card, live **"on shift now"** list, big header clock); employee mobile view reworked to the teal **"on shift now"** hero (live elapsed time, in-app Face ID **clock-out** via `POST /api/clock/self`, period total, flagged history rows) + bottom tab bar. New shared primitives `Avatar`, `TagDot` (`tag-color.ts`), `MobileTabBar`. Both surfaces visually verified in the preview against the mockups.
+- ✅ In-app self clock-in/out (`/api/clock/self`) — session identity + WebAuthn confirm; `onShiftNow()` realtime list (`/api/clock/onshift`, reused by §6.3).
+- ✅ i18n — full `clock` catalog (sv source + en), tier-gated nav links. 40 tests green (20 new: clock-token, deviations, clock pure logic); production build passes.
+- ⬜ Lost/new-device re-registration via OTP + owner-initiated device reset (§5) — `DEVICE_REREGISTER` code purpose exists; flow not built.
+- ⬜ <3s field validation under lunch rush (§5 process requirement) and full cold-start PWA offline boot (§14.3, SW currently caches the shell after first load) — need a real device/deploy.
+- ⬜ Weekly deviation digest notification (§6.3) — same console-only gap as the rest of the app.
+
 ## Spec section → status
 
 | § | Area | Status | Notes |
@@ -62,9 +81,9 @@ commit as the code it describes.
 | 1–2 | Vision, design principles | ✅ | Encoded as constraints throughout; see CLAUDE.md. |
 | 3 | Roles & permissions | 🟡 | Modeled + enforcement layer ✅ (`authz` + `guard`, negative tests). Member-management UI ⬜. |
 | 4 | Invite system | 🟡 | Token gen/accept/revoke/bulk-paste ✅, verified end-to-end. CSV file upload ⬜. |
-| 5 | Clock-in identity (WebAuthn/PIN) | ⬜ | Schema ready. WebAuthn reg/auth, PIN, QR, <3s flow ⬜. Geofencing 🚫 (designed-for, not built). |
+| 5 | Clock-in identity (WebAuthn/PIN) | 🟡 | PIN method, QR/kiosk + stamp flow, tier gate ✅ (verified). WebAuthn reg/discoverable-auth built (needs real-device verification). Device re-registration/reset ⬜. <3s lunch-rush field test ⬜. Geofencing 🚫. |
 | 6.1 | Shifts (week view, open shifts, swaps, availability) | 🟡 | Week view, CRUD, open-shift fill (both modes, server-enforced), tag matching, full swap lifecycle, availability ✅, verified end-to-end. Escalation cron + notifications + double-booking checks ⬜. |
-| 6.2 | Clock-in section + offline + tolerance window | ⬜ | Schema ready (`SyncStatus`, `clientId`, tolerance fields). Service worker + IndexedDB queue ⬜. |
+| 6.2 | Clock-in section + offline + tolerance window | 🟡 | Stamp (append-only, idempotent), own history + hours, graded tolerance/deviations, IndexedDB queue + SW shell cache ✅ (verified). Cold-start PWA offline boot + deviation digest ⬜. |
 | 6.3 | Economy/admin (summary, deviations, export) | ⬜ | Schema ready. Owner UI, deviation review, export ⬜. |
 | 7 | Competence tags | ✅ | `Tag`/`EmployeeTag` + admin UI (create/delete tags, assign per member) + qualification matching enforced in shift claim/interest/swap-accept. |
 | 8.1 | NL → schedule changes (AI) | ⬜ | Confirm-card flow, Haiku integration ⬜. **Hard rule:** suggest → confirm → write. |
@@ -86,7 +105,7 @@ commit as the code it describes.
 2. ✅ **Tier/role middleware + negative tests** (§12.2) — single authorization layer; Bas → 403 proven in tests.
 3. ✅ **Invite system** (§4) — single-use tokens, OTP accept, revoke, bulk-paste invite, admin UI. ⬜ CSV file upload remains.
 4. ✅ **Shifts section** (§6.1) — week view, open shifts (both fill modes, server-enforced), swap flow with tag matching (§7), availability, tags admin. ⬜ Escalation cron, notifications, double-booking checks remain.
-5. **Clock-in** (§5, §6.2) — WebAuthn + PIN, QR, the <3s flow, offline queue + sync.
+5. ✅ **Clock-in** (§5, §6.2) — PIN + WebAuthn identity, QR/kiosk, append-only idempotent stamps, graded tolerance/deviations, own history + hours, offline queue + SW, admin QR/tolerance setup. ⬜ Device re-registration/reset, real-device WebAuthn + <3s field test, cold-start PWA offline remain.
 6. **Economy/admin** (§6.3) — summary, deviation review, export templates (Fortnox/Visma/CSV), "export all my data".
 7. **AI** (§8) — schedule NL + payroll draft, both behind the suggest→confirm→write gate.
 8. **Billing** (§12) — Stripe checkout, 30-day trial lifecycle, freeze-on-expiry.
