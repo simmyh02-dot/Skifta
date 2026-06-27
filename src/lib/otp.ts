@@ -37,6 +37,7 @@ export async function issueCode(
   await getSender().send(
     contact,
     `Din Skifta-kod är ${code}. Den gäller i ${TTL_MINUTES} minuter.`,
+    "Din Skifta-kod",
   );
 }
 

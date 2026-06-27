@@ -46,6 +46,7 @@ export async function createInvite(input: CreateInviteInput) {
   await getSender().send(
     { type: input.contact.type, value: input.contact.value },
     `Du har blivit inbjuden till ${invite.restaurant.name} på Skifta: ${url} (giltig ${TTL_DAYS} dagar)`,
+    `Inbjudan till ${invite.restaurant.name}`,
   );
 
   return invite;
