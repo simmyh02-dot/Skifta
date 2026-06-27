@@ -94,7 +94,7 @@ commit as the code it describes.
 - ✅ **OB-rule presets** (`src/lib/payroll/rules.ts`, §13) — owner picks a preset template ("Inget OB-tillägg" / "Kväll & helg"), not free-form entry. Stored **versioned** as an `OBRuleSet` row so an approved draft traces to exactly which rules applied.
 - ✅ **AI presentation layer** (`src/lib/ai/payroll-note.ts`) — Claude **Haiku** (`claude-haiku-4-5`, the model the spec specifies §8) writes a short Swedish summary of the *already-computed* draft. The AI only summarises/presents — it computes no number and **never writes to the DB** (build rule #6). Degrades gracefully: with no `ANTHROPIC_API_KEY` it returns a deterministic Swedish note, so the flow runs with zero AI keys. System prompt is prompt-cached (§8.3). 3 tests.
 - ✅ **suggest → confirm → write** (§8, hard rule) — `POST /api/economy/payroll/preview` computes the draft + note and **persists nothing**; `POST .../approve` is the only writer and runs only behind the owner's explicit click, **recomputing server-side** (never trusts client numbers) and writing `PayrollPeriodSummary` rows with the line breakdown. Members with an **unreviewed deviation** (§6.3) or **no rate** are held back and named, never folded in silently. `payroll:manage` (FULL + admin), verified unauth → 401.
-- ✅ **Rates + OB config** — `Membership.hourlyRate` added (nullable `Decimal`; **migration created, not yet applied** to Neon per owner's choice — run `npx prisma migrate deploy` to apply). `GET/POST /api/economy/payroll/rate` (per-employee rate) and `/ruleset` (OB preset) under settings:manage + FULL.
+- ✅ **Rates + OB config** — `Membership.hourlyRate` added (nullable `Decimal`; migration applied to the live Neon DB 2026-06-27). `GET/POST /api/economy/payroll/rate` (per-employee rate) and `/ruleset` (OB preset) under settings:manage + FULL.
 - ✅ **UI** — new "Löneutkast" tab in `EconomyView`: Generate (AI) → review cards with the transparent breakdown + AI note (AI/fallback badge) + missing-rate/unreviewed flags → Approve & save (confirm-card flow); disclaimer that it's a draft, not a binding payslip. Settings tab gains the OB-preset picker + per-employee rate inputs. This fills the mockup's OB/gross columns that §6.3 deferred.
 - ✅ i18n — full `economy.draft` / `rates` / `obRules` catalogs (sv + en). **66 tests green**; production build passes; all 4 payroll routes registered.
 - ⬜ §8.1 (NL → schedule changes) — the other half of §8; not started.
@@ -147,10 +147,6 @@ commit as the code it describes.
 7. 🟡 **AI** (§8) — payroll draft (§8.2) ✅ and NL→schedule (§8.1) ✅: deterministic OB/gross engine + Haiku note for payroll, Haiku forced tool-use → confirm-card for scheduling, both suggest→confirm→write. ⬜ §8.3 soft trial cap remains.
 8. **Billing** (§12) — Stripe checkout, 30-day trial lifecycle, freeze-on-expiry.
 9. **PWA** (§14.3) — manifest + service worker (reuses the offline-queue SW).
-
-## Pending DB migration (not yet applied)
-
-- `20260627000000_add_membership_hourly_rate` adds the nullable `Membership.hourlyRate` column for §8.2. The migration file + Prisma client are committed, but it has **not** been run against the Neon DB (owner's choice). Apply with `npx prisma migrate deploy` (or it runs automatically on the next Vercel deploy if the build step includes it). Until applied, the payroll-rate endpoints will error against the live DB; everything else works.
 
 ## Open items to confirm with the owner
 
