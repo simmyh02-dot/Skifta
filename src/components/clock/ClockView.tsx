@@ -155,6 +155,9 @@ export function ClockView({
             <a href="/app/schedule" className="hover:text-primary">{t("app.nav.schedule")}</a>
             <a href="/app/clock" className="text-ink hover:text-primary">{t("app.nav.clock")}</a>
             {isAdmin && (
+              <a href="/app/economy" className="hover:text-primary">{t("app.nav.economy")}</a>
+            )}
+            {isAdmin && (
               <a href="/app/clock/setup" className="hover:text-primary">{t("clock.admin.title")}</a>
             )}
           </nav>

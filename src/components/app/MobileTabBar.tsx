@@ -25,8 +25,11 @@ export function MobileTabBar({
 }) {
   const { t } = useTranslations();
 
+  // Owners' Admin tab opens the economy/admin section (§6.3) — the richer
+  // owner surface; member management is linked from inside it. Employees get
+  // their availability tab instead.
   const third = isAdmin
-    ? { href: "/app/admin/members", label: t("app.nav.admin"), Icon: ChartIcon }
+    ? { href: "/app/economy", label: t("app.nav.admin"), Icon: ChartIcon }
     : { href: "/app/availability", label: t("app.nav.availability"), Icon: PersonIcon };
 
   const items: { key: Tab; href: string; label: string; Icon: typeof ClockIcon }[] = [

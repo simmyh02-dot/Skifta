@@ -74,6 +74,20 @@ commit as the code it describes.
 - ⬜ <3s field validation under lunch rush (§5 process requirement) and full cold-start PWA offline boot (§14.3, SW currently caches the shell after first load) — need a real device/deploy.
 - ⬜ Weekly deviation digest notification (§6.3) — same console-only gap as the rest of the app.
 
+## Economy/admin section (this session, §6.3)
+
+- ✅ Owner overview — `/app/economy` (`EconomyView`), FULL tier + owner/co-owner only (`economy:view`, verified: unauth → 307 `/login`, API → 401). Period-scoped (calendar month, prev/next nav). Four tabs: **Payroll period** (stat cards + per-employee table), **Time clock** (realtime on-shift), **Deviations** (review queue), **Settings** (export).
+- ✅ Automatic hour summarisation — `src/lib/economy-data.ts` sums worked hours per employee per period by reusing the append-only `accumulateHours` pairing; constant number of queries regardless of headcount. Stat cards: total hours, flagged (open) deviations, on-shift count, activation/adoption (X of Y).
+- ✅ Deviation review lifecycle (§6.3) — `POST /api/economy/deviations/[id]` with `review` (→ REVIEWED), `approve` ("godkänn som stämplat" → APPROVED), or `adjust`. **Adjust honours append-only**: it writes a `ClockEventAdjustment` pointing back at the original stamp + reason, never mutating the `ClockEvent`, then approves the deviation. Restaurant-scoped; `deviation:review` (FULL + admin).
+- ✅ **Export gate enforced server-side** (§6.3 — "ogranskade avvikelser inkluderas ALDRIG tyst") — `splitExportable` holds back any member with an OPEN deviation; `GET /api/economy/export` returns **409 + the blocked names** unless the owner explicitly acknowledges exclusion (`?exclude=1`), which exports only the cleared members. No silent inclusion, no silent auto-adjustment. Unit-tested.
+- ✅ Export formats + "save as my default" — Fortnox / Visma / generic CSV column layouts (`buildExportCsv`, documented plausible structures; CUSTOM falls back to generic until a template is imported). CSV with UTF-8 BOM so Excel reads å/ä/ö. `POST /api/economy/export/default` persists `defaultExportFormat` (settings:manage + FULL).
+- ✅ "Exportera all min data" (§6.3 + §13 GDPR portability) — `GET /api/economy/export-all?format=json|csv`: full restaurant dump (employees, schedules, stamp history) as structured JSON or a stamp-history CSV. Gated on `members:manage` (admin, **both tiers**) so a Bas owner can also take their data.
+- ✅ Realtime overview — reuses `onShiftNow()` ("vem är instämplad just nu").
+- ✅ i18n — full `economy` catalog (sv source + en). Economy nav links added to schedule/clock desktop headers (admin) + owner mobile Admin tab → `/app/economy` (bar-chart icon, per mockup); member admin cross-linked. 12 new unit tests (period math, CSV escaping, export gate, format layouts); **52 tests green** (8 files); production build passes.
+- ⬜ OB classification + estimated gross payroll (the mockup's "OB" and "Est gross" columns/cards) — deferred to **§8.2** (AI-assisted payroll draft): needs an OB rule set + per-member rate, which is the next milestone. Hours/deviations/export underlag is complete and honest without fabricated money figures.
+- ⬜ Import-my-own-template (CUSTOM column mapping upload) — schema (`ExportTemplate.columnMapping`) ready; upload UI not built. Same file-upload gap as §4 bulk CSV.
+- ⬜ Weekly deviation digest notification (§6.3) — same console-only notification gap as the rest of the app.
+
 ## Spec section → status
 
 | § | Area | Status | Notes |
@@ -84,7 +98,7 @@ commit as the code it describes.
 | 5 | Clock-in identity (WebAuthn/PIN) | 🟡 | PIN method, QR/kiosk + stamp flow, tier gate ✅ (verified). WebAuthn reg/discoverable-auth built (needs real-device verification). Device re-registration/reset ⬜. <3s lunch-rush field test ⬜. Geofencing 🚫. |
 | 6.1 | Shifts (week view, open shifts, swaps, availability) | 🟡 | Week view, CRUD, open-shift fill (both modes, server-enforced), tag matching, full swap lifecycle, availability ✅, verified end-to-end. Escalation cron + notifications + double-booking checks ⬜. |
 | 6.2 | Clock-in section + offline + tolerance window | 🟡 | Stamp (append-only, idempotent), own history + hours, graded tolerance/deviations, IndexedDB queue + SW shell cache ✅ (verified). Cold-start PWA offline boot + deviation digest ⬜. |
-| 6.3 | Economy/admin (summary, deviations, export) | ⬜ | Schema ready. Owner UI, deviation review, export ⬜. |
+| 6.3 | Economy/admin (summary, deviations, export) | 🟡 | Owner UI (4 tabs), hour summary, deviation review (append-only adjust), export gate (unreviewed → blocked), Fortnox/Visma/CSV formats + save-default, export-all-my-data, realtime overview ✅. OB/gross → §8.2; CUSTOM template upload + deviation digest ⬜. |
 | 7 | Competence tags | ✅ | `Tag`/`EmployeeTag` + admin UI (create/delete tags, assign per member) + qualification matching enforced in shift claim/interest/swap-accept. |
 | 8.1 | NL → schedule changes (AI) | ⬜ | Confirm-card flow, Haiku integration ⬜. **Hard rule:** suggest → confirm → write. |
 | 8.2 | Payroll draft (AI) | ⬜ | `PayrollPeriodSummary.lineItems` for transparent breakdown. Rules engine + draft UI ⬜. |
@@ -106,8 +120,8 @@ commit as the code it describes.
 3. ✅ **Invite system** (§4) — single-use tokens, OTP accept, revoke, bulk-paste invite, admin UI. ⬜ CSV file upload remains.
 4. ✅ **Shifts section** (§6.1) — week view, open shifts (both fill modes, server-enforced), swap flow with tag matching (§7), availability, tags admin. ⬜ Escalation cron, notifications, double-booking checks remain.
 5. ✅ **Clock-in** (§5, §6.2) — PIN + WebAuthn identity, QR/kiosk, append-only idempotent stamps, graded tolerance/deviations, own history + hours, offline queue + SW, admin QR/tolerance setup. ⬜ Device re-registration/reset, real-device WebAuthn + <3s field test, cold-start PWA offline remain.
-6. **Economy/admin** (§6.3) — summary, deviation review, export templates (Fortnox/Visma/CSV), "export all my data".
-7. **AI** (§8) — schedule NL + payroll draft, both behind the suggest→confirm→write gate.
+6. ✅ **Economy/admin** (§6.3) — period summary + per-employee hours, deviation review (append-only adjust), export gate (unreviewed never silent), Fortnox/Visma/CSV formats + save-default, "export all my data". ⬜ OB/gross (→§8.2), CUSTOM template upload, deviation digest remain.
+7. **AI** (§8) — schedule NL + payroll draft (the OB/gross half of the §6.3 mockup lives here), both behind the suggest→confirm→write gate.
 8. **Billing** (§12) — Stripe checkout, 30-day trial lifecycle, freeze-on-expiry.
 9. **PWA** (§14.3) — manifest + service worker (reuses the offline-queue SW).
 

@@ -127,6 +127,11 @@ export function ScheduleView({
               </a>
             )}
             {isAdmin && (
+              <a href="/app/economy" className="hover:text-primary">
+                {t("app.nav.economy")}
+              </a>
+            )}
+            {isAdmin && (
               <a href="/app/admin/members" className="hover:text-primary">
                 {t("invite.admin.title")}
               </a>
