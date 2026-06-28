@@ -2,6 +2,7 @@ import { requireUser, requirePermission, errorResponse } from "@/lib/guard";
 import { monthBounds, parsePeriodKey } from "@/lib/economy";
 import { buildPayrollDrafts } from "@/lib/payroll/data";
 import { payrollNote } from "@/lib/ai/payroll-note";
+import { recordAiCall } from "@/lib/ai/fair-use";
 
 // "Suggest" step of the §8.2 draft (suggest → confirm → write). Computes a
 // deterministic per-employee draft and an AI presentation note. **Writes
@@ -33,6 +34,7 @@ export async function POST(req: Request) {
         unreviewed: m.unreviewed,
       })),
     });
+    if (note.source === "ai") await recordAiCall(activeRestaurantId);
 
     return Response.json({ ...preview, note });
   } catch (err) {

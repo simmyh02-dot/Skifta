@@ -126,6 +126,7 @@ enum CodePurpose {
   LOGIN // owner/employee sign-in (§12.1)
   INVITE_ACCEPT // verify the invited contact (§4)
   DEVICE_REREGISTER // re-register a WebAuthn key on a new phone (§5)
+  SIGNUP // verify the founding owner's contact when creating a new restaurant (§12.1)
 }
 
 // ──────────────────────────── Identity ───────────────────────────
@@ -211,6 +212,7 @@ model Restaurant {
   subscriptionStatus   SubscriptionStatus @default(TRIALING)
   trialStartedAt       DateTime?
   trialEndsAt          DateTime? // 30-day trial (§12.1)
+  trialReminderSentAt  DateTime? // day 25–28 reminder e-mail, sent at most once
   stripeCustomerId     String?            @unique
   stripeSubscriptionId String?            @unique
 
@@ -222,6 +224,11 @@ model Restaurant {
   swapDefaultMode        SwapMode      @default(DIRECTED)
   swapEscalationMinutes  Int           @default(120)
   autoApproveShortNotice Boolean       @default(false)
+
+  // Trial AI fair-use (§8.3) — soft cap, flag not block (counts real AI calls
+  // made while subscriptionStatus is TRIALING; never resets/decrements).
+  trialAiCallCount   Int       @default(0)
+  trialAiFlaggedAt   DateTime? // set once the soft cap is first exceeded, for manual review
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

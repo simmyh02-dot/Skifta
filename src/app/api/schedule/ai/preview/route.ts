@@ -5,6 +5,7 @@ import {
   resolveMembers,
   ScheduleAiUnavailableError,
 } from "@/lib/ai/schedule-assistant";
+import { recordAiCall } from "@/lib/ai/fair-use";
 
 // "Suggest" step of §8.1 (suggest → confirm → write). Turns the owner's free
 // text into a structured shift proposal against real schedule context.
@@ -26,6 +27,7 @@ export async function POST(req: Request) {
 
     const context = await buildScheduleContext(activeRestaurantId);
     const proposed = await proposeSchedule(instruction, context);
+    await recordAiCall(activeRestaurantId);
     const shifts = resolveMembers(proposed, context.members);
 
     return Response.json({ shifts });
