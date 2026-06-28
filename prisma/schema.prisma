@@ -135,12 +135,13 @@ enum CodePurpose {
 /// normalised (E.164 / lowercased) so matching is always against the canonical
 /// value (§4).
 model User {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   displayName     String
-  normalizedPhone String?  @unique // E.164, e.g. +46701234567
-  normalizedEmail String?  @unique
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  normalizedPhone String?   @unique // E.164, e.g. +46701234567
+  normalizedEmail String?   @unique
+  anonymizedAt    DateTime? // §13 right-to-erasure: PII scrubbed, ClockEvents kept for accounting
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   memberships         Membership[]
   webauthnCredentials WebAuthnCredential[]

@@ -159,6 +159,17 @@ export function SignupForm() {
       <Button type="submit" size="lg" disabled={loading || code.length < 6}>
         {loading ? t("auth.signup.verifying") : t("auth.signup.verify")}
       </Button>
+      <p className="text-center text-xs text-ink-faint">
+        {t("auth.signup.legalPrefix")}{" "}
+        <a href="/dpa" target="_blank" className="underline hover:text-primary">
+          {t("footer.dpa")}
+        </a>{" "}
+        {t("auth.signup.legalAnd")}{" "}
+        <a href="/privacy" target="_blank" className="underline hover:text-primary">
+          {t("footer.privacy")}
+        </a>
+        .
+      </p>
       <button
         type="button"
         onClick={() => {
