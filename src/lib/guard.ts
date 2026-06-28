@@ -26,17 +26,44 @@ export async function requireUser(): Promise<{
   return session;
 }
 
-/** Resolve (role, tier) for a user in a restaurant, or null if no live membership. */
+/** Resolve (role, tier) for a user in a restaurant, or null if no live
+ *  membership — or if the restaurant is FROZEN (§12.1: a frozen account
+ *  blocks access entirely, data preserved but unreachable until payment).
+ *  During TRIALING the effective tier is always FULL regardless of the
+ *  package the owner picked at signup ("fullt paket upplåst oavsett valt
+ *  paket", §12.1 step 3) — `tier` on the row is what they'll actually be
+ *  billed for once the trial ends. */
 export async function getAccessContext(
   userId: string,
   restaurantId: string,
 ): Promise<AccessContext | null> {
   const membership = await prisma.membership.findUnique({
     where: { userId_restaurantId: { userId, restaurantId } },
-    include: { restaurant: { select: { tier: true } } },
+    include: { restaurant: { select: { tier: true, subscriptionStatus: true } } },
   });
   if (!membership || membership.endedAt) return null;
-  return { role: membership.role, tier: membership.restaurant.tier };
+  const { tier, subscriptionStatus } = membership.restaurant;
+  if (subscriptionStatus === "FROZEN") return null;
+  const effectiveTier = subscriptionStatus === "TRIALING" ? "FULL" : tier;
+  return { role: membership.role, tier: effectiveTier };
+}
+
+/** Throws AuthError(403) unless the current user is the billing owner for
+ *  this restaurant — the one exception where OWNER/CO_OWNER are NOT
+ *  interchangeable (§3.2): only `Membership.isBillingOwner` may manage the
+ *  Stripe subscription. Deliberately checked directly on the flag rather
+ *  than added as a new `Action`/permission tree (CLAUDE.md build rule #4). */
+export async function requireBillingOwner(
+  restaurantId: string,
+): Promise<{ userId: string }> {
+  const { userId } = await requireUser();
+  const membership = await prisma.membership.findUnique({
+    where: { userId_restaurantId: { userId, restaurantId } },
+  });
+  if (!membership || membership.endedAt || !membership.isBillingOwner) {
+    throw new AuthError(403, "not_billing_owner");
+  }
+  return { userId };
 }
 
 /** Throws AuthError(401/403) unless the current user may perform `action`. */

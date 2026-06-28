@@ -98,7 +98,6 @@ commit as the code it describes.
 - ✅ **UI** — new "Löneutkast" tab in `EconomyView`: Generate (AI) → review cards with the transparent breakdown + AI note (AI/fallback badge) + missing-rate/unreviewed flags → Approve & save (confirm-card flow); disclaimer that it's a draft, not a binding payslip. Settings tab gains the OB-preset picker + per-employee rate inputs. This fills the mockup's OB/gross columns that §6.3 deferred.
 - ✅ i18n — full `economy.draft` / `rates` / `obRules` catalogs (sv + en). **66 tests green**; production build passes; all 4 payroll routes registered.
 - ⬜ §8.1 (NL → schedule changes) — the other half of §8; not started.
-- ⬜ §8.3 soft fair-use trial cap (~50 AI calls, flagged not blocked) — note layer is built; the usage counter/flag is not.
 - ⬜ Real OB rates from a specific collective agreement, and the "import my own column template" (CUSTOM) export mapping — presets are illustrative starting points the owner adjusts.
 
 ## AI scheduling (this session, §8.1)
@@ -109,7 +108,36 @@ commit as the code it describes.
 - ✅ **No fabricated fallback** — unlike §8.2's deterministic numbers, there's no honest way to "guess" a schedule interpretation without a model, so with no `ANTHROPIC_API_KEY` the preview route returns 503 `ai_unavailable` and the UI says so plainly, rather than inventing a fake parse.
 - ✅ **UI** — `/app/schedule` gets an "AI-schemaläggning" entry next to "Nytt pass" (owner/co-owner, FULL tier only): free-text box → review card listing every proposed shift **by name/date/time** (not a summary sentence, per §8.1 design requirement) → "Ändra manuellt" makes the list inline-editable → "Godkänn" (writes) / "Avbryt" (discards). Ambiguous rows are visually flagged with the model's own note.
 - ✅ i18n — `schedule.ai` catalog (sv + en). **69 tests green**; production build passes; both AI routes registered.
-- ⬜ §8.3 soft fair-use trial cap (~50 AI calls, flagged not blocked) — still not built, same gap as §8.2.
+
+## AI fair use (this session, §8.3)
+
+- ✅ **Soft trial cap** (`src/lib/ai/fair-use.ts`) — `recordAiCall()` increments `Restaurant.trialAiCallCount` only while `subscriptionStatus = TRIALING` (paid usage is unmetered) and only counts a real model call (never the no-key fallback path, since that has no AI cost). Crossing **50 calls** sets `trialAiFlaggedAt` once and logs internally — **never** a hard block, exactly per spec ("flaggas internt … INGEN hård spärr"). Best-effort: a tracking failure never breaks the AI feature itself.
+- ✅ Wired into both AI call sites — payroll preview (only when `payrollNote` actually used Haiku, i.e. `source === "ai"`) and schedule preview (after a successful `proposeSchedule`, which throws before any count if no key is configured).
+- ✅ Migration `trial_ai_fair_use_cap` applied to the live Neon DB (additive nullable/defaulted columns).
+- ✅ Build passes; existing 69 tests still green (this is a thin DB-backed counter, consistent with the codebase's pattern of not mocking Prisma in unit tests — verified instead by build + code review).
+
+## PWA (this session, §14.3)
+
+- ✅ **Manifest** (`src/app/manifest.ts`, Next's metadata-file convention) — served at `/manifest.webmanifest`, `start_url: /app`, `display: standalone`, brand theme/background colors, 192/512 + maskable icons. Verified: fetches 200 with the right shape.
+- ✅ **Icons** (`public/icons/`) — generated programmatically (no design tool/new dependency) from the same rounded-diamond mark as `Logo.tsx`, in the brand teal/cream palette; plain + maskable variants at 192/512.
+- ✅ **App-wide install + offline shell** — `src/components/PwaRegister.tsx` registers the existing clock-in service worker (`public/clock-sw.js`, §6.2) from the root layout, so every route gets the install prompt and offline shell, not just the kiosk. **Privacy fix made in the same change:** the SW's cache key is the URL only, with no notion of "whose session" — so `/app/*` (authenticated, per-user HTML) is now explicitly excluded from caching to avoid one user's page being served to the next session on a shared device; only public pages (`/`, `/login`, `/clock/*`, static assets) are cached. Verified live: manifest linked, SW registered at root scope, icons 200, cache contains only public paths after visiting `/` and `/login`.
+- ✅ `appleWebApp` + `theme-color` viewport metadata for iOS/Android install chrome.
+- ✅ Build + lint + 69 tests still green.
+- ⬜ Real-device install/offline verification (Android/iOS home-screen add, full cold-start offline boot) — needs a deployed HTTPS origin, same gap noted in §6.2/§5.
+
+## Billing (this session, §12)
+
+- ✅ **Signup flow** (`/signup`, `src/components/auth/SignupForm.tsx`, `/api/auth/signup/{request-code,verify}`) — discovered this was a real gap, not just unbuilt billing: the landing page already linked `/signup?plan=bas|full` but nothing created a `Restaurant` yet. New `CodePurpose.SIGNUP` OTP step (mirrors login/invite-accept) verifies the founding owner's contact before creating Restaurant + User + Membership(`role: OWNER, isBillingOwner: true`) in one transaction — the soft qualification §12.1 step 4 asks for (name + restaurant name/orgnr + verified contact). Accounts stay person-centric (§3.1): an existing User signing up a second restaurant just gets a second Membership.
+- ✅ **Trial unlocks the full package regardless of chosen tier** (§12.1 step 3) — `getAccessContext` in `src/lib/guard.ts` now computes an *effective* tier: `FULL` while `subscriptionStatus = TRIALING`, the row's real `tier` otherwise. One change point fixes every page/route that calls it; previously a Bas-tier signup would have wrongly stayed locked out of clock-in/economy/AI during its own trial.
+- ✅ **Frozen-account gate** (§12.1 step 6: "fryses kontot, data bevaras, inloggning blockeras") — `getAccessContext` returns null (no access) for `FROZEN`, same as no membership; `/app` checks subscription status first and routes to `/app/frozen` instead of looping. The frozen page is deliberately *not* gated through `getAccessContext` — it's the one page that must stay reachable to pay your way out.
+- ✅ **Trial lifecycle cron** (`src/lib/billing.ts`, `/api/cron/billing`, `vercel.json`) — day-25–28 reminder e-mail to the billing owner (sent at most once, `trialReminderSentAt`), day-30 freeze **only if no Stripe subscription is attached** (never an automatic charge — spec is explicit: "INGEN automatisk debitering av ett kort kunden glömt"). Authenticated via `CRON_SECRET` bearer header, the documented Vercel Cron pattern; verified unauthenticated → 401.
+- ✅ **Stripe checkout + portal + webhook** (`src/lib/stripe.ts`, `/api/billing/{checkout,portal,webhook}`) — hosted Checkout Session (monthly/yearly), Customer Portal for managing/canceling, and a signature-verified webhook that's the *only* writer of payment outcome (checkout/portal merely start a Stripe flow — suggest → confirm → write applies to money too). Billing-owner only (`requireBillingOwner` in guard.ts), the one documented exception where OWNER/CO_OWNER aren't interchangeable (§3.2) — checked directly on `Membership.isBillingOwner`, not a new permission tree (CLAUDE.md rule #4).
+- ✅ **Setup script** (`scripts/stripe-setup.mjs`) — creates the Bas/Fullt Products + monthly/yearly Prices via the Stripe API (yearly = 10× monthly, ~2 months free, the §12.3 retention discount) so the Price ids in `.env` always match what's actually configured; not hand-typed in the dashboard. Not yet run — needs your `STRIPE_SECRET_KEY` in `.env` first.
+- ✅ **UI** — `/app/billing` (trial countdown / active badge, monthly/yearly checkout buttons, manage-subscription link once a card exists) and `/app/frozen` (the escape hatch — same checkout buttons, plus an "ask the owner" message for non-billing-owner staff). Nav entry added next to Members/Economy for owners/co-owners.
+- ✅ Migration `billing_signup_trial` (CodePurpose.SIGNUP, Restaurant.trialReminderSentAt) applied to the live Neon DB. Build + lint + 69 tests green. **Verified end-to-end against the real DB** with a throwaway test restaurant (created, then deleted): signup → session → `/app/schedule`; flipped to FROZEN → `/app` correctly redirects to `/app/frozen`, direct `/app/schedule` hit bounces the same way; checkout → 503 `billing_unavailable` (no Stripe key yet, degrades cleanly instead of fabricating a link); portal → 400 `no_customer`; cron → 401 unauthenticated.
+- ✅ **Stripe fully wired** — `STRIPE_SECRET_KEY` (test mode) set; `scripts/stripe-setup.mjs` run, Bas/Fullt monthly+yearly Prices created and IDs in `.env`; webhook endpoint added in the Stripe dashboard pointed at `/api/billing/webhook` with its signing secret in Vercel; `CRON_SECRET` generated and set in both `.env` and Vercel. Live-verified: `/api/billing/checkout` returns a real `checkout.stripe.com` URL and persists `stripeCustomerId` on the restaurant (tested + cleaned up against the real DB and a real test-mode Stripe customer).
+- ⬜ **Not yet verified**: a real Checkout completion against the *deployed* URL, to confirm the webhook actually flips `TRIALING`→`ACTIVE` in production (can't be driven from local dev — needs a live deploy + a real test-card payment).
+- ⬜ Referral ("bjud in en annan restaurang") and the move-restaurant-on-churn flow (§12.4) — not started, lower priority per spec ("liten funktion").
 
 ## Spec section → status
 
@@ -125,13 +153,13 @@ commit as the code it describes.
 | 7 | Competence tags | ✅ | `Tag`/`EmployeeTag` + admin UI (create/delete tags, assign per member) + qualification matching enforced in shift claim/interest/swap-accept. |
 | 8.1 | NL → schedule changes (AI) | ✅ | Haiku forced tool-use → structured proposal, confirm-card UI (exact list, editable, ambiguity shown), suggest→confirm→write, server-side re-validation on approve. No-key → explicit 503, no fake fallback. |
 | 8.2 | Payroll draft (AI) | 🟡 | Deterministic OB/overtime engine (traceable line items), Haiku presentation note (graceful no-key fallback), suggest→confirm→write, rates + OB presets, draft UI ✅. Real agreement rates + CUSTOM template ⬜. |
-| 8.3 | AI cost / fair-use | 🟡 | Prompt caching on the note's system prompt ✅. Soft ~50-call trial cap (flag, not block) ⬜. |
+| 8.3 | AI cost / fair-use | ✅ | Prompt caching on the note's system prompt ✅. Soft ~50-call trial cap (flag, not block) ✅. |
 | 9 | Data model | ✅ | See `prisma/schema.prisma`. |
 | 10 | Discreet complexity (UI) | ✅ (principle) | Enforced as a build rule; re-checked per view. |
 | 11 | i18n + mobile-first + landing | ✅ | i18n + landing done. Mobile-first app shells ⬜. |
-| 12 | Business model (trial, tiers, pricing) | 🟡 | Pricing UI ✅. Tier middleware + **negative tests** ✅. Stripe checkout, 30-day trial, soft-qualification ⬜. |
+| 12 | Business model (trial, tiers, pricing) | 🟡 | Pricing UI ✅. Tier middleware + **negative tests** ✅. Signup + 30-day trial (full package unlocked regardless of tier) + soft-qualification + reminder/freeze cron + Stripe checkout/portal/webhook ✅, keys configured, checkout verified live. Full webhook confirmation needs a real deploy ⬜. Referral + move-restaurant flows ⬜. |
 | 13 | Legal / GDPR / retention | 🟡 | `OBRuleSet` (versioned), `RetentionPolicy` modeled. DPA, privacy policy, erasure flow ⬜. |
-| 14 | Hosting / VCS / PWA path | 🟡 | Git repo ✅. Vercel deploy ⬜. PWA manifest+SW ⬜ (native 🚫). |
+| 14 | Hosting / VCS / PWA path | 🟡 | Git repo ✅. PWA manifest+SW ✅ (installable, app-wide offline shell). Vercel deploy ⬜ (native 🚫). |
 | 15 | Acceptance criteria | ⬜ | Test suite ⬜ (esp. tier 403 negative tests, offline-no-loss, append-only). |
 | 16 | Payroll-admin workflow reference | n/a | Guides prioritization; steps 1–4 are the value target. |
 | 17 | Out of MVP scope | 🚫 | BankID, own tax calc, OCR, geofencing, native app, per-tier codebases, languages beyond SV. |
@@ -144,9 +172,9 @@ commit as the code it describes.
 4. ✅ **Shifts section** (§6.1) — week view, open shifts (both fill modes, server-enforced), swap flow with tag matching (§7), availability, tags admin. ⬜ Escalation cron, notifications, double-booking checks remain.
 5. ✅ **Clock-in** (§5, §6.2) — PIN + WebAuthn identity, QR/kiosk, append-only idempotent stamps, graded tolerance/deviations, own history + hours, offline queue + SW, admin QR/tolerance setup. ⬜ Device re-registration/reset, real-device WebAuthn + <3s field test, cold-start PWA offline remain.
 6. ✅ **Economy/admin** (§6.3) — period summary + per-employee hours, deviation review (append-only adjust), export gate (unreviewed never silent), Fortnox/Visma/CSV formats + save-default, "export all my data". ⬜ OB/gross (→§8.2), CUSTOM template upload, deviation digest remain.
-7. 🟡 **AI** (§8) — payroll draft (§8.2) ✅ and NL→schedule (§8.1) ✅: deterministic OB/gross engine + Haiku note for payroll, Haiku forced tool-use → confirm-card for scheduling, both suggest→confirm→write. ⬜ §8.3 soft trial cap remains.
-8. **Billing** (§12) — Stripe checkout, 30-day trial lifecycle, freeze-on-expiry.
-9. **PWA** (§14.3) — manifest + service worker (reuses the offline-queue SW).
+7. ✅ **AI** (§8) — payroll draft (§8.2) ✅, NL→schedule (§8.1) ✅, soft fair-use trial cap (§8.3) ✅: deterministic OB/gross engine + Haiku note for payroll, Haiku forced tool-use → confirm-card for scheduling, both suggest→confirm→write, both AI call sites counted against a 50-call/trial soft cap that flags-not-blocks.
+8. ✅ **PWA** (§14.3) — manifest + app-wide service worker registration (reuses the offline-queue SW from §6.2), installable home-screen icon, themed standalone display.
+9. ✅ **Billing** (§12) — signup flow, 30-day trial (full package unlocked regardless of chosen tier), frozen-account gate, reminder/freeze cron, Stripe checkout/portal/webhook all built, keys configured (test mode), and checkout verified live against the real DB + Stripe. ⬜ A full Checkout-to-webhook confirmation still needs a real deploy.
 
 ## Open items to confirm with the owner
 

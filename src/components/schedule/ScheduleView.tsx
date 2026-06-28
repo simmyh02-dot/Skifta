@@ -139,6 +139,11 @@ export function ScheduleView({
                 {t("invite.admin.title")}
               </a>
             )}
+            {isAdmin && (
+              <a href="/app/billing" className="hover:text-primary">
+                {t("app.nav.billing")}
+              </a>
+            )}
           </nav>
         </div>
         <div className="flex items-center gap-4">

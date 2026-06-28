@@ -14,6 +14,15 @@ export default async function AppHome() {
       where: { userId: session.userId, endedAt: null },
     });
     if (count > 1) redirect("/app/select");
+  } else {
+    // Frozen account (§12.1): trial ended, no card on file — login itself
+    // isn't blocked (the session is still valid), but every page beyond this
+    // one is, so route here first rather than letting each page 404/loop.
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: session.activeRestaurantId },
+      select: { subscriptionStatus: true },
+    });
+    if (restaurant?.subscriptionStatus === "FROZEN") redirect("/app/frozen");
   }
 
   redirect("/app/schedule");
