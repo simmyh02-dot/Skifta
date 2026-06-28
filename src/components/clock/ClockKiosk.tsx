@@ -7,7 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { startAuthentication } from "@simplewebauthn/browser";
+import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { useTranslations } from "@/i18n/LocaleProvider";
 import { Logo } from "@/components/ui/Logo";
 import { LangToggle } from "@/components/landing/LangToggle";
@@ -67,6 +67,7 @@ export function ClockKiosk({
   const [queued, setQueued] = useState(0);
   const [onShift, setOnShift] = useState<OnShift[]>([]);
   const [now, setNow] = useState(() => new Date());
+  const [reregistering, setReregistering] = useState(false);
   const online = useOnline();
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const active = valid && !tierLocked;
@@ -241,6 +242,17 @@ export function ClockKiosk({
     );
   }
 
+  // ── Lost-device self-service re-registration (§5) ───────────────────────────
+  if (reregistering) {
+    return (
+      <Shell restaurantName={restaurantName} now={now} locale={locale}>
+        <div className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center justify-center">
+          <ReregisterPanel onClose={() => setReregistering(false)} />
+        </div>
+      </Shell>
+    );
+  }
+
   // ── Idle: keypad + sidebar ──────────────────────────────────────────────────
   return (
     <Shell restaurantName={restaurantName} now={now} locale={locale} online={online} queued={queued} offlineLabel={t("clock.kiosk.offline")} queuedLabel={t("clock.kiosk.pendingCount", { count: queued })}>
@@ -312,6 +324,14 @@ export function ClockKiosk({
                 {t("clock.kiosk.scanMeta")}
               </span>
             </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setReregistering(true)}
+            className="text-center text-xs text-ink-faint hover:text-ink-muted hover:underline"
+          >
+            {t("clock.kiosk.lostDevice")}
           </button>
 
           <div className="rounded-2xl bg-surface p-5 shadow-sm ring-1 ring-border">
@@ -425,6 +445,149 @@ function KeypadButton({
     >
       {children}
     </button>
+  );
+}
+
+type RegStep = "contact" | "code" | "register" | "done";
+
+/**
+ * §5 lost/new-device self-service: a kiosk-public flow that never touches the
+ * full `/app` session. Contact → OTP (DEVICE_REREGISTER) → the server starts a
+ * WebAuthn registration ceremony bound to that resolved user via a short-lived
+ * cookie → the browser completes the ceremony → finish persists the credential.
+ */
+function ReregisterPanel({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslations();
+  const [step, setStep] = useState<RegStep>("contact");
+  const [contact, setContact] = useState("");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function sendCode(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await fetch("/api/clock/webauthn/reregister/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contact }),
+      });
+      setStep("code");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verifyAndRegister(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const optRes = await fetch("/api/clock/webauthn/reregister/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contact, code }),
+      });
+      if (!optRes.ok) {
+        setError(t("clock.kiosk.reregisterError"));
+        return;
+      }
+      const options = await optRes.json();
+      setStep("register");
+      const attestation = await startRegistration({ optionsJSON: options });
+      const finishRes = await fetch("/api/clock/webauthn/reregister/finish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ response: attestation, deviceLabel: navigator.platform || null }),
+      });
+      if (!finishRes.ok) {
+        setError(t("clock.kiosk.reregisterError"));
+        setStep("code");
+        return;
+      }
+      setStep("done");
+    } catch {
+      setError(t("clock.kiosk.reregisterError"));
+      setStep("code");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (step === "done") {
+    return (
+      <div className="flex flex-col items-center gap-4 text-center">
+        <CheckMark />
+        <p className="text-lg text-ink-muted">{t("clock.kiosk.reregisterDone")}</p>
+        <button type="button" onClick={onClose} className="text-sm text-ink-faint hover:underline">
+          {t("clock.kiosk.reregisterBack")}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full rounded-2xl bg-surface p-6 shadow-sm ring-1 ring-border">
+      <h2 className="text-lg font-semibold text-ink">{t("clock.kiosk.reregisterTitle")}</h2>
+      <p className="mt-1.5 text-sm text-ink-muted">{t("clock.kiosk.reregisterBody")}</p>
+
+      {step === "contact" && (
+        <form onSubmit={sendCode} className="mt-4 flex flex-col gap-3">
+          <input
+            value={contact}
+            onChange={(e) => setContact(e.target.value)}
+            placeholder={t("clock.kiosk.reregisterContactPlaceholder")}
+            className="h-11 rounded-xl border border-border bg-surface px-4 text-ink placeholder:text-ink-faint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            required
+          />
+          <button
+            type="submit"
+            disabled={busy || !contact.trim()}
+            className="h-11 rounded-xl bg-primary text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {busy ? t("clock.kiosk.reregisterSending") : t("clock.kiosk.reregisterSendCode")}
+          </button>
+        </form>
+      )}
+
+      {(step === "code" || step === "register") && (
+        <form onSubmit={verifyAndRegister} className="mt-4 flex flex-col gap-3">
+          <p className="text-xs text-ink-faint">{t("clock.kiosk.reregisterCodeSent", { contact })}</p>
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            placeholder={t("clock.kiosk.reregisterCodeLabel")}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            className="h-11 rounded-xl border border-border bg-surface px-4 text-center tracking-[0.4em] text-ink placeholder:tracking-normal placeholder:text-ink-faint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            required
+          />
+          <button
+            type="submit"
+            disabled={busy || code.length < 6}
+            className="h-11 rounded-xl bg-primary text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {busy
+              ? step === "register"
+                ? t("clock.kiosk.reregisterRegister")
+                : t("clock.kiosk.reregisterVerifying")
+              : t("clock.kiosk.reregisterVerify")}
+          </button>
+        </form>
+      )}
+
+      {error && <p className="mt-3 text-sm text-accent">{error}</p>}
+
+      <button
+        type="button"
+        onClick={onClose}
+        className="mt-4 text-sm text-ink-faint hover:underline"
+      >
+        {t("clock.kiosk.reregisterCancel")}
+      </button>
+    </div>
   );
 }
 

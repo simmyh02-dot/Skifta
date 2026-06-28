@@ -29,6 +29,7 @@ const origin = process.env.WEBAUTHN_ORIGIN ?? "http://localhost:3000";
 
 const REG_CHALLENGE_COOKIE = "skifta_wa_reg";
 const AUTH_CHALLENGE_COOKIE = "skifta_wa_auth";
+const REREGISTER_USER_COOKIE = "skifta_wa_reregister";
 const CHALLENGE_TTL = 300; // seconds
 
 async function setChallenge(name: string, challenge: string) {
@@ -111,6 +112,21 @@ export async function finishRegistration(
   return true;
 }
 
+/**
+ * §5 lost/new-device self-service: after the kiosk's OTP step
+ * (CodePurpose.DEVICE_REREGISTER) proves identity, bind the resolved userId to
+ * a short-lived cookie so the *next* request (the registration ceremony) can
+ * persist a new credential without a full `/app` login session — a shared
+ * kiosk should never end up signed into the owner/economy app.
+ */
+export async function setReregisterUser(userId: string): Promise<void> {
+  await setChallenge(REREGISTER_USER_COOKIE, userId);
+}
+
+export async function takeReregisterUser(): Promise<string | null> {
+  return takeChallenge(REREGISTER_USER_COOKIE);
+}
+
 /** Discoverable-credential authentication options for the kiosk (no username). */
 export async function startAuthentication() {
   const options = await generateAuthenticationOptions({
@@ -160,4 +176,19 @@ export async function finishAuthentication(
   } catch {
     return null;
   }
+}
+
+/**
+ * §5 "förlorad enhet": owner/co-owner removes a colleague's lost-device
+ * credentials, since they're already trusted admins. This is global to the
+ * User (the schema has no restaurant scope on WebAuthnCredential — one person,
+ * one biometric identity across every restaurant they work at), so resetting
+ * it also clears clock-in at any other restaurant they're a member of. That's
+ * an accepted edge case for someone working multiple jobs through Skifta; the
+ * person simply re-registers (self-service OTP flow, or normal login) and is
+ * unaffected anywhere else. Returns how many credentials were removed.
+ */
+export async function resetWebAuthnCredentials(userId: string): Promise<number> {
+  const result = await prisma.webAuthnCredential.deleteMany({ where: { userId } });
+  return result.count;
 }

@@ -89,6 +89,8 @@ const sv = {
 
   footer: {
     copy: "© 2026 Skifta · Gjort i Sverige för små restauranger",
+    privacy: "Integritetspolicy",
+    dpa: "Personuppgiftsbiträdesavtal",
   },
 
   auth: {
@@ -134,6 +136,8 @@ const sv = {
       verifying: "Skapar konto …",
       back: "Tillbaka",
       noCard: "Inget kreditkort krävs för att starta.",
+      legalPrefix: "Genom att skapa ett konto godkänner du vårt",
+      legalAnd: "och vår",
       errorContact: "Kontrollera numret eller e-posten och försök igen.",
       errorCode: "Fel eller utgången kod. Försök igen.",
     },
@@ -167,6 +171,12 @@ const sv = {
       bulkHint: "En rad per person: Namn, telefon eller e-post",
       bulkSend: "Skicka alla",
       bulkResult: "{created} inbjudningar skickade, {skipped} hoppades över.",
+      uploadTitle: "Eller ladda upp en fil",
+      uploadHint:
+        "CSV-fil med en rad per person: Namn, telefon eller e-post, (valfri roll). Exportera från Excel via Spara som → CSV.",
+      uploadButton: "Välj CSV-fil",
+      uploadParsed: "{count} rader inlästa, {skipped} ofullständiga. Granska och skicka.",
+      uploadEmpty: "Hittade inga giltiga rader i filen.",
       errorCreate: "Kunde inte skapa inbjudan. Kontrollera uppgifterna.",
       revoke: "Återkalla",
       empty: "Inga inbjudningar än.",
@@ -182,6 +192,19 @@ const sv = {
       addTag: "Lägg till",
       removeTag: "Ta bort",
       membersTitle: "Anställda",
+      peopleTitle: "Anställda",
+      peopleHint:
+        "När någon slutar: avsluta anställningen och radera personuppgifter. Stämplings- och lönehistorik bevaras enligt lag (§13).",
+      removeMember: "Ta bort",
+      removeConfirm:
+        "Ta bort {name}? Anställningen avslutas och personuppgifterna raderas. Stämplingshistoriken bevaras enligt bokföringskrav.",
+      removeDone: "{name} togs bort och anonymiserades.",
+      removeEnded: "{name}:s anställning avslutades.",
+      removeError: "Kunde inte ta bort. Försök igen.",
+      resetDevice: "Återställ enhet",
+      resetDeviceConfirm:
+        "Återställ {name}s enhet? Face ID/Touch ID-nycklar tas bort och personen måste registrera en ny enhet.",
+      resetDeviceDone: "{name}s enhet är återställd.",
     },
   },
 
@@ -286,6 +309,21 @@ const sv = {
       clockedIn: "{count} instämplade",
       onTime: "i tid",
       backspace: "Radera",
+      lostDevice: "Tappat telefonen?",
+      reregisterTitle: "Registrera ny enhet",
+      reregisterBody: "Ange telefon eller e-post på ditt konto. Vi skickar en kod för att bekräfta att det är dig.",
+      reregisterContactPlaceholder: "Telefon eller e-post",
+      reregisterSendCode: "Skicka kod",
+      reregisterSending: "Skickar …",
+      reregisterCodeLabel: "Engångskod",
+      reregisterCodeSent: "Kod skickad till {contact}.",
+      reregisterVerify: "Bekräfta",
+      reregisterVerifying: "Bekräftar …",
+      reregisterRegister: "Registrera Face ID / Touch ID",
+      reregisterDone: "Klart! Du kan stämpla med den nya enheten.",
+      reregisterError: "Något gick fel. Kontrollera koden och försök igen.",
+      reregisterCancel: "Avbryt",
+      reregisterBack: "← Tillbaka till stämpling",
     },
     title: "Stämpling",
     subtitle: "Din stämplingshistorik och dina timmar denna vecka.",
@@ -510,6 +548,69 @@ const sv = {
     body: "Provperioden för {restaurant} har gått ut utan ett kopplat betalkort. All data finns kvar — koppla ett kort för att fortsätta.",
     bodyOther: "Provperioden för {restaurant} har gått ut. Be {name} koppla ett betalkort för att fortsätta.",
     cta: "Koppla betalkort",
+  },
+
+  legal: {
+    back: "Tillbaka",
+    updated: "Senast uppdaterad 28 juni 2026",
+    privacy: {
+      title: "Integritetspolicy",
+      intro:
+        "Den här policyn beskriver hur Skifta behandlar personuppgifter. Skifta är personuppgiftsbiträde åt restaurangen som använder tjänsten — restaurangen är personuppgiftsansvarig för sina anställdas uppgifter. Rådgör med jurist innan ni förlitar er på den här texten i skarpt läge.",
+      sections: [
+        {
+          heading: "Rättslig grund",
+          body: "Behandlingen av anställningsdata och PIN-koder vilar på fullgörande av anställningsavtal och rättslig förpliktelse (t.ex. bokföringslagen) — inte på samtycke. Samtycke är en svag grund i en anställd–arbetsgivarrelation på grund av maktobalansen, och används därför inte för obligatoriska uppgifter.",
+        },
+        {
+          heading: "Vilka uppgifter vi behandlar",
+          body: "Namn, telefonnummer eller e-post, roll och anställningsrelation, schema- och tillgänglighetsdata, samt stämplingshistorik (tidpunkter, inte plats). Telefonnummer normaliseras till E.164 före lagring.",
+        },
+        {
+          heading: "WebAuthn och biometri",
+          body: "Inloggning och instämpling med Face ID/Touch ID använder WebAuthn. Den biometriska informationen lämnar aldrig din enhet — Skifta lagrar endast en publik nyckel och kan inte återskapa ditt ansikte eller fingeravtryck. Nycklarna är därför inte biometriska personuppgifter i juridisk mening.",
+        },
+        {
+          heading: "Lagring och gallring",
+          body: "Stämplings- och löneunderlag sparas så länge bokföringskraven gäller och anonymiseras eller raderas automatiskt därefter. När en anställd slutar avslutas relationen och persondata anonymiseras enligt restaurangens lagringspolicy, medan aggregerat löneunderlag bevaras så länge lagen kräver.",
+        },
+        {
+          heading: "Dina rättigheter",
+          body: "Du har rätt till tillgång, rättelse, dataportabilitet och radering. Restaurangägaren kan exportera all data (JSON/CSV) och radera en anställds personuppgifter direkt i appen. Stämplingsposter är revisionssäkra: en korrigering är alltid en spårbar ny post, aldrig en tyst ändring.",
+        },
+        {
+          heading: "Kontakt",
+          body: "Frågor om dina uppgifter ställs i första hand till din arbetsgivare (den personuppgiftsansvariga restaurangen). Frågor om tjänsten i sig: privacy@skifta.se.",
+        },
+      ],
+    },
+    dpa: {
+      title: "Personuppgiftsbiträdesavtal",
+      intro:
+        "Det här biträdesavtalet (DPA) gäller mellan restaurangen (personuppgiftsansvarig) och Skifta (personuppgiftsbiträde) och blir bindande när restaurangen registrerar ett konto. Det reglerar Skiftas behandling av personuppgifter för restaurangens räkning enligt artikel 28 GDPR.",
+      sections: [
+        {
+          heading: "Föremål och varaktighet",
+          body: "Skifta behandlar personuppgifter om restaurangens anställda i syfte att tillhandahålla schemaläggning, stämpelklocka och löneunderlag. Behandlingen pågår så länge restaurangen har ett aktivt konto, plus den lagstadgade lagringstiden för bokföringsunderlag.",
+        },
+        {
+          heading: "Instruktioner",
+          body: "Skifta behandlar uppgifterna enbart enligt restaurangens dokumenterade instruktioner, så som de uttrycks genom tjänstens funktioner. Skifta använder inte uppgifterna för egna ändamål och säljer dem aldrig vidare.",
+        },
+        {
+          heading: "Säkerhet och underbiträden",
+          body: "Uppgifterna lagras krypterat hos våra underbiträden (hosting och databas inom EU/EES, samt betal- och utskicksleverantörer). PIN-koder lagras hashade, aldrig i klartext. Skifta vidtar lämpliga tekniska och organisatoriska åtgärder enligt artikel 32 GDPR.",
+        },
+        {
+          heading: "Bistånd och radering",
+          body: "Skifta bistår restaurangen med att uppfylla de registrerades rättigheter och tillhandahåller export och radering i appen. Vid avtalets slut raderas eller anonymiseras personuppgifter, med undantag för underlag som måste bevaras enligt lag.",
+        },
+        {
+          heading: "Personuppgiftsincident",
+          body: "Vid en konstaterad personuppgiftsincident underrättar Skifta restaurangen utan onödigt dröjsmål, så att restaurangen kan fullgöra sin anmälningsskyldighet till Integritetsskyddsmyndigheten.",
+        },
+      ],
+    },
   },
 };
 

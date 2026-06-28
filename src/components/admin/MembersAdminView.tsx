@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslations } from "@/i18n/LocaleProvider";
 import { Button } from "@/components/ui/Button";
 import { TagsAdmin } from "@/components/admin/TagsAdmin";
+import { PeopleAdmin } from "@/components/admin/PeopleAdmin";
+import { parseInviteCsv, type ParsedInviteRow } from "@/lib/csv-invite";
 
 type Role = "EMPLOYEE" | "CO_OWNER";
 
@@ -30,6 +32,9 @@ export function MembersAdminView({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bulkResult, setBulkResult] = useState<string | null>(null);
+  const [uploadRows, setUploadRows] = useState<ParsedInviteRow[]>([]);
+  const [uploadNote, setUploadNote] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const inputClass =
     "h-11 rounded-xl border border-border bg-surface px-4 text-ink placeholder:text-ink-faint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
@@ -85,6 +90,38 @@ export function MembersAdminView({
     }
   }
 
+  /** Post a batch of rows to the bulk endpoint (shared by paste + file upload),
+   *  report the result, and refresh the invite list. */
+  async function submitRows(
+    rows: { name: string; contact: string; role: string }[],
+  ): Promise<boolean> {
+    if (rows.length === 0) return false;
+    const res = await fetch("/api/invites/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rows }),
+    });
+    if (!res.ok) {
+      setError(t("invite.admin.errorCreate"));
+      return false;
+    }
+    const data = await res.json();
+    setBulkResult(
+      t("invite.admin.bulkResult", {
+        created: data.created,
+        skipped: data.skipped?.length ?? 0,
+      }),
+    );
+    const res2 = await fetch("/api/invites");
+    if (res2.ok) {
+      const list = await res2.json();
+      setInvites(
+        list.invites.map((i: InviteRow) => ({ ...i, expiresAt: i.expiresAt })),
+      );
+    }
+    return true;
+  }
+
   async function bulkInvite(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -99,34 +136,40 @@ export function MembersAdminView({
           const [namePart, contactPart] = line.split(",").map((s) => s.trim());
           return { name: namePart, contact: contactPart, role: "EMPLOYEE" };
         });
-      if (rows.length === 0) return;
+      if (await submitRows(rows)) setBulkText("");
+    } finally {
+      setLoading(false);
+    }
+  }
 
-      const res = await fetch("/api/invites/bulk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows }),
-      });
-      if (!res.ok) {
-        setError(t("invite.admin.errorCreate"));
-        return;
-      }
-      const data = await res.json();
-      setBulkResult(
-        t("invite.admin.bulkResult", {
-          created: data.created,
-          skipped: data.skipped?.length ?? 0,
-        }),
+  async function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    setBulkResult(null);
+    setUploadNote(null);
+    const text = await file.text();
+    const { rows, skipped } = parseInviteCsv(text);
+    if (rows.length === 0) {
+      setUploadRows([]);
+      setUploadNote(t("invite.admin.uploadEmpty"));
+    } else {
+      setUploadRows(rows);
+      setUploadNote(
+        t("invite.admin.uploadParsed", { count: rows.length, skipped }),
       );
-      setBulkText("");
-      const res2 = await fetch("/api/invites");
-      if (res2.ok) {
-        const list = await res2.json();
-        setInvites(
-          list.invites.map((i: InviteRow) => ({
-            ...i,
-            expiresAt: i.expiresAt,
-          })),
-        );
+    }
+    // Allow re-picking the same file after a send.
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function sendUpload() {
+    setLoading(true);
+    setError(null);
+    try {
+      if (await submitRows(uploadRows)) {
+        setUploadRows([]);
+        setUploadNote(null);
       }
     } finally {
       setLoading(false);
@@ -142,6 +185,8 @@ export function MembersAdminView({
       <p className="mt-1.5 text-sm text-ink-muted">
         {t("invite.admin.subtitle")}
       </p>
+
+      <PeopleAdmin />
 
       <TagsAdmin />
 
@@ -202,6 +247,36 @@ export function MembersAdminView({
           {t("invite.admin.bulkSend")}
         </Button>
       </form>
+
+      <div className="mt-4 flex flex-col gap-3 rounded-2xl bg-surface p-5 shadow-sm ring-1 ring-border">
+        <h2 className="text-sm font-semibold text-ink">
+          {t("invite.admin.uploadTitle")}
+        </h2>
+        <p className="text-xs text-ink-faint">{t("invite.admin.uploadHint")}</p>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,text/csv,text/plain"
+          onChange={onFilePicked}
+          className="text-sm text-ink-muted file:mr-3 file:rounded-xl file:border-0 file:bg-primary/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/15"
+        />
+        {uploadNote && <p className="text-sm text-ink-muted">{uploadNote}</p>}
+        {uploadRows.length > 0 && (
+          <>
+            <ul className="max-h-40 overflow-y-auto rounded-xl bg-surface-2 px-4 py-2 text-xs text-ink-muted ring-1 ring-border">
+              {uploadRows.map((r, i) => (
+                <li key={i} className="py-0.5">
+                  {r.name} · {r.contact}
+                  {r.role === "CO_OWNER" && ` · ${t("app.roles.CO_OWNER")}`}
+                </li>
+              ))}
+            </ul>
+            <Button type="button" onClick={sendUpload} disabled={loading}>
+              {t("invite.admin.bulkSend")}
+            </Button>
+          </>
+        )}
+      </div>
 
       <ul className="mt-6 flex flex-col gap-2">
         {invites.map((inv) => (

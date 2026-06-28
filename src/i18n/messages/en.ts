@@ -88,6 +88,8 @@ const en: Messages = {
 
   footer: {
     copy: "© 2026 Skifta · Made in Sweden for small restaurants",
+    privacy: "Privacy policy",
+    dpa: "Data processing agreement",
   },
 
   auth: {
@@ -132,6 +134,8 @@ const en: Messages = {
       verifying: "Creating account …",
       back: "Back",
       noCard: "No credit card required to start.",
+      legalPrefix: "By creating an account you accept our",
+      legalAnd: "and our",
       errorContact: "Check the number or email and try again.",
       errorCode: "Wrong or expired code. Try again.",
     },
@@ -165,6 +169,12 @@ const en: Messages = {
       bulkHint: "One line per person: Name, phone or email",
       bulkSend: "Send all",
       bulkResult: "{created} invites sent, {skipped} skipped.",
+      uploadTitle: "Or upload a file",
+      uploadHint:
+        "CSV file, one person per row: Name, phone or email, (optional role). Export from Excel via Save As → CSV.",
+      uploadButton: "Choose CSV file",
+      uploadParsed: "{count} rows read, {skipped} incomplete. Review and send.",
+      uploadEmpty: "No valid rows found in the file.",
       errorCreate: "Couldn't create invite. Check the details.",
       revoke: "Revoke",
       empty: "No invites yet.",
@@ -180,6 +190,19 @@ const en: Messages = {
       addTag: "Add",
       removeTag: "Remove",
       membersTitle: "Staff",
+      peopleTitle: "Staff",
+      peopleHint:
+        "When someone leaves: end the employment and erase their personal data. Clock and payroll history is kept as required by law (§13).",
+      removeMember: "Remove",
+      removeConfirm:
+        "Remove {name}? Their employment ends and personal data is erased. Clock history is preserved per accounting requirements.",
+      removeDone: "{name} was removed and anonymized.",
+      removeEnded: "{name}'s employment was ended.",
+      removeError: "Couldn't remove. Please try again.",
+      resetDevice: "Reset device",
+      resetDeviceConfirm:
+        "Reset {name}'s device? Face ID/Touch ID keys are removed and they'll need to register a new device.",
+      resetDeviceDone: "{name}'s device was reset.",
     },
   },
 
@@ -284,6 +307,21 @@ const en: Messages = {
       clockedIn: "{count} clocked in",
       onTime: "on time",
       backspace: "Delete",
+      lostDevice: "Lost your phone?",
+      reregisterTitle: "Register a new device",
+      reregisterBody: "Enter the phone or email on your account. We'll send a code to confirm it's you.",
+      reregisterContactPlaceholder: "Phone or email",
+      reregisterSendCode: "Send code",
+      reregisterSending: "Sending …",
+      reregisterCodeLabel: "One-time code",
+      reregisterCodeSent: "Code sent to {contact}.",
+      reregisterVerify: "Confirm",
+      reregisterVerifying: "Confirming …",
+      reregisterRegister: "Register Face ID / Touch ID",
+      reregisterDone: "Done! You can clock in with the new device.",
+      reregisterError: "Something went wrong. Check the code and try again.",
+      reregisterCancel: "Cancel",
+      reregisterBack: "← Back to clock-in",
     },
     title: "Time clock",
     subtitle: "Your clock-in history and hours this week.",
@@ -508,6 +546,69 @@ const en: Messages = {
     body: "The trial for {restaurant} ended with no card on file. All data is preserved — add a card to continue.",
     bodyOther: "The trial for {restaurant} ended. Ask {name} to add a card to continue.",
     cta: "Add a card",
+  },
+
+  legal: {
+    back: "Back",
+    updated: "Last updated 28 June 2026",
+    privacy: {
+      title: "Privacy policy",
+      intro:
+        "This policy describes how Skifta processes personal data. Skifta is a data processor on behalf of the restaurant using the service — the restaurant is the controller for its employees' data. Consult a lawyer before relying on this text in production.",
+      sections: [
+        {
+          heading: "Legal basis",
+          body: "Processing of employment data and PINs rests on performance of the employment contract and legal obligation (e.g. accounting law) — not on consent. Consent is a weak basis in an employee–employer relationship due to the power imbalance, so it is not used for mandatory data.",
+        },
+        {
+          heading: "What we process",
+          body: "Name, phone or email, role and employment relationship, schedule and availability, and clock history (timestamps, not location). Phone numbers are normalized to E.164 before storage.",
+        },
+        {
+          heading: "WebAuthn and biometrics",
+          body: "Login and clock-in with Face ID/Touch ID use WebAuthn. The biometric never leaves your device — Skifta stores only a public key and cannot reconstruct your face or fingerprint. These keys are therefore not biometric personal data in the legal sense.",
+        },
+        {
+          heading: "Storage and erasure",
+          body: "Clock and payroll records are kept for as long as accounting requirements apply, then automatically anonymized or deleted. When an employee leaves, the relationship is ended and personal data is anonymized per the restaurant's retention policy, while aggregated payroll records are retained as the law requires.",
+        },
+        {
+          heading: "Your rights",
+          body: "You have the right to access, rectification, portability and erasure. The owner can export all data (JSON/CSV) and erase an employee's personal data directly in the app. Clock entries are audit-safe: a correction is always a traceable new record, never a silent edit.",
+        },
+        {
+          heading: "Contact",
+          body: "Questions about your data go first to your employer (the controller restaurant). Questions about the service itself: privacy@skifta.se.",
+        },
+      ],
+    },
+    dpa: {
+      title: "Data processing agreement",
+      intro:
+        "This data processing agreement (DPA) is between the restaurant (controller) and Skifta (processor) and becomes binding when the restaurant registers an account. It governs Skifta's processing of personal data on the restaurant's behalf under Article 28 GDPR.",
+      sections: [
+        {
+          heading: "Subject matter and duration",
+          body: "Skifta processes personal data about the restaurant's employees in order to provide scheduling, a time clock and payroll source data. Processing lasts as long as the restaurant has an active account, plus the statutory retention period for accounting records.",
+        },
+        {
+          heading: "Instructions",
+          body: "Skifta processes the data solely on the restaurant's documented instructions, as expressed through the service's features. Skifta does not use the data for its own purposes and never sells it on.",
+        },
+        {
+          heading: "Security and sub-processors",
+          body: "Data is stored encrypted with our sub-processors (hosting and database within the EU/EEA, plus payment and messaging providers). PINs are stored hashed, never in clear text. Skifta applies appropriate technical and organizational measures under Article 32 GDPR.",
+        },
+        {
+          heading: "Assistance and deletion",
+          body: "Skifta assists the restaurant in fulfilling data subjects' rights and provides export and erasure in the app. On termination, personal data is deleted or anonymized, except records that must be retained by law.",
+        },
+        {
+          heading: "Personal data breach",
+          body: "On a confirmed personal data breach, Skifta notifies the restaurant without undue delay so the restaurant can meet its obligation to report to the supervisory authority.",
+        },
+      ],
+    },
   },
 };
 
