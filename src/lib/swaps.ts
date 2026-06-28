@@ -1,23 +1,31 @@
+import type { SwapStatus } from "@prisma/client";
 import { prisma } from "./prisma";
-import { qualifiedMembers } from "./shifts";
+import { qualifiedMembers, assertNoDoubleBooking } from "./shifts";
+import {
+  notifySwapNeedsReply,
+  notifySwapAccepted,
+  notifySwapApproved,
+  notifySwapEscalated,
+} from "./notify";
 
 // Swap flow (§6.1): "can't work" → request → reply → owner approval. `mode`
 // is the restaurant's default at request time (directed = owner picks who's
 // asked; broad = all qualified colleagues see it, first to accept wins).
 
+// A PENDING swap and an ESCALATED one are both still actionable — escalation
+// just pulls the owner in, it doesn't lock the request — so the reply/decline/
+// direct steps treat them the same.
+const OPEN_SWAP: SwapStatus[] = ["PENDING", "ESCALATED"];
+
 export async function startSwap(shiftId: string, requestedById: string, restaurantId: string) {
   const shift = await prisma.shift.findFirst({
     where: { id: shiftId, restaurantId, assignedUserId: requestedById, status: "ASSIGNED" },
+    include: { restaurant: { select: { name: true, swapDefaultMode: true, swapEscalationMinutes: true } } },
   });
   if (!shift) return null;
 
-  const restaurant = await prisma.restaurant.findUnique({
-    where: { id: restaurantId },
-    select: { swapDefaultMode: true, swapEscalationMinutes: true },
-  });
-  if (!restaurant) return null;
-
-  return prisma.shiftSwapRequest.create({
+  const { restaurant } = shift;
+  const swap = await prisma.shiftSwapRequest.create({
     data: {
       shiftId,
       requestedById,
@@ -27,6 +35,19 @@ export async function startSwap(shiftId: string, requestedById: string, restaura
       ),
     },
   });
+
+  // BROAD: every qualified colleague (minus the requester) is asked right away.
+  // DIRECTED: nobody is notified until the owner picks who to ask (`directSwap`).
+  if (restaurant.swapDefaultMode === "BROAD") {
+    const qualified = await qualifiedMembers(restaurantId, shiftId);
+    await notifySwapNeedsReply(
+      qualified.filter((u) => u.id !== requestedById).map((u) => u.id),
+      restaurant.name,
+      shift.startsAt,
+    );
+  }
+
+  return swap;
 }
 
 /** Owner directs a DIRECTED request to a specific qualified colleague. */
@@ -36,7 +57,8 @@ export async function directSwap(
   restaurantId: string,
 ): Promise<boolean> {
   const swap = await prisma.shiftSwapRequest.findFirst({
-    where: { id: swapId, status: "PENDING", mode: "DIRECTED", shift: { restaurantId } },
+    where: { id: swapId, status: { in: OPEN_SWAP }, mode: "DIRECTED", shift: { restaurantId } },
+    include: { shift: { include: { restaurant: { select: { name: true } } } } },
   });
   if (!swap) return false;
 
@@ -47,6 +69,7 @@ export async function directSwap(
     where: { id: swapId },
     data: { directedToId },
   });
+  await notifySwapNeedsReply([directedToId], swap.shift.restaurant.name, swap.shift.startsAt);
   return true;
 }
 
@@ -57,7 +80,8 @@ export async function acceptSwap(
   restaurantId: string,
 ): Promise<boolean> {
   const swap = await prisma.shiftSwapRequest.findFirst({
-    where: { id: swapId, status: "PENDING", shift: { restaurantId } },
+    where: { id: swapId, status: { in: OPEN_SWAP }, shift: { restaurantId } },
+    include: { shift: { include: { restaurant: { select: { name: true } } } } },
   });
   if (!swap) return false;
   if (swap.mode === "DIRECTED" && swap.directedToId !== userId) return false;
@@ -67,9 +91,12 @@ export async function acceptSwap(
   }
 
   const result = await prisma.shiftSwapRequest.updateMany({
-    where: { id: swapId, status: "PENDING" },
+    where: { id: swapId, status: { in: OPEN_SWAP } },
     data: { acceptedById: userId, status: "ACCEPTED" },
   });
+  if (result.count > 0) {
+    await notifySwapAccepted(restaurantId, swap.shift.restaurant.name, swap.shift.startsAt);
+  }
   return result.count > 0;
 }
 
@@ -81,7 +108,7 @@ export async function declineSwap(
   const result = await prisma.shiftSwapRequest.updateMany({
     where: {
       id: swapId,
-      status: "PENDING",
+      status: { in: OPEN_SWAP },
       directedToId: userId,
       shift: { restaurantId },
     },
@@ -98,8 +125,18 @@ export async function approveSwap(
 ): Promise<boolean> {
   const swap = await prisma.shiftSwapRequest.findFirst({
     where: { id: swapId, status: "ACCEPTED", shift: { restaurantId } },
+    include: { shift: { include: { restaurant: { select: { name: true } } } } },
   });
   if (!swap || !swap.acceptedById) return false;
+
+  // Don't approve a swap that would double-book the colleague taking over.
+  await assertNoDoubleBooking(
+    swap.acceptedById,
+    restaurantId,
+    swap.shift.startsAt,
+    swap.shift.endsAt,
+    swap.shiftId,
+  );
 
   await prisma.$transaction([
     prisma.shift.update({
@@ -111,6 +148,13 @@ export async function approveSwap(
       data: { status: "APPROVED", approvedById, resolvedAt: new Date() },
     }),
   ]);
+
+  await notifySwapApproved(
+    swap.acceptedById,
+    swap.requestedById,
+    swap.shift.restaurant.name,
+    swap.shift.startsAt,
+  );
   return true;
 }
 
@@ -124,9 +168,38 @@ export async function cancelSwap(
       id: swapId,
       requestedById,
       shift: { restaurantId },
-      status: { in: ["PENDING", "ACCEPTED"] },
+      status: { in: ["PENDING", "ESCALATED", "ACCEPTED"] },
     },
     data: { status: "CANCELED", resolvedAt: new Date() },
   });
   return result.count > 0;
+}
+
+/**
+ * §6.1 escalation: a PENDING swap whose `escalateAt` window has passed with no
+ * reply is flipped to ESCALATED and the owners are pinged so it doesn't sit
+ * silently past the lunch rush. Idempotent — only PENDING rows are touched, so
+ * re-running the sweep never re-notifies. Driven by the shifts cron.
+ */
+export async function escalateOverdueSwaps(now: Date = new Date()): Promise<number> {
+  const overdue = await prisma.shiftSwapRequest.findMany({
+    where: { status: "PENDING", escalateAt: { lte: now } },
+    include: { shift: { include: { restaurant: { select: { id: true, name: true } } } } },
+  });
+
+  let escalated = 0;
+  for (const swap of overdue) {
+    const flip = await prisma.shiftSwapRequest.updateMany({
+      where: { id: swap.id, status: "PENDING" },
+      data: { status: "ESCALATED" },
+    });
+    if (flip.count === 0) continue; // someone resolved it between read and write
+    await notifySwapEscalated(
+      swap.shift.restaurant.id,
+      swap.shift.restaurant.name,
+      swap.shift.startsAt,
+    );
+    escalated++;
+  }
+  return escalated;
 }
