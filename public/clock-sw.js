@@ -1,13 +1,13 @@
-// Clock-in service worker (§6.2). Its job is to keep the kiosk usable when the
-// network drops: it runtime-caches the page shell and static assets so a kiosk
-// that has loaded once keeps rendering offline. The actual stamp queue lives in
+// App-wide offline shell (§6.2 clock-in resilience + §14.3 PWA installability).
+// Registered on every page (src/components/PwaRegister.tsx); caches public,
+// non-authenticated pages and static assets (stale-while-revalidate) so the
+// kiosk and landing/login keep rendering offline. Never caches /api/* or
+// /app/* — those are per-session, and the cache key has no concept of "whose
+// session" the cached HTML belongs to. The clock stamp queue itself lives in
 // IndexedDB (see src/lib/clock-queue.ts) and is replayed by the page on
-// reconnect; clock-in stamps are never served from cache.
-//
-// Note: a full cold-start PWA install is part of §14.3; this SW is the offline
-// resilience layer the clock section needs, reused later by the PWA work.
+// reconnect; stamps are never served from this cache.
 
-const CACHE = "skifta-clock-v1";
+const CACHE = "skifta-shell-v2";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -32,6 +32,10 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   // Don't cache API responses — clock data must always be live.
   if (url.pathname.startsWith("/api/")) return;
+  // Never cache authenticated app pages: they're per-session HTML keyed on a
+  // cookie the cache key doesn't see, so caching by URL alone would risk
+  // serving one user's page to the next user/session on a shared device.
+  if (url.pathname.startsWith("/app")) return;
 
   // Stale-while-revalidate: serve cache fast, refresh in the background.
   event.respondWith(
