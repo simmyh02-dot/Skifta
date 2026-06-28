@@ -491,6 +491,8 @@ const en: Messages = {
     trialDaysLeft: "{days} days left of your free trial.",
     trialEnded: "Your trial has ended.",
     activeBadge: "Active subscription",
+    pastDueBadge: "Payment failed",
+    canceledBadge: "Subscription canceled",
     planBas: "Bas",
     planFull: "Full package",
     monthly: "Pay monthly ({price} kr/mo)",

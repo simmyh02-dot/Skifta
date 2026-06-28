@@ -57,6 +57,20 @@ export function BillingView({
   }
 
   const monthlyKr = MONTHLY_KR[tier];
+  // Only TRIALING (never checked out) or CANCELED (checked out, then
+  // canceled) should see "buy" buttons. ACTIVE/PAST_DUE already have a
+  // running Stripe subscription — buying again would create a second one
+  // instead of changing/fixing the existing one, so they get the portal
+  // (upgrade/downgrade/cancel/update card) instead.
+  const canPurchase = subscriptionStatus === "TRIALING" || subscriptionStatus === "CANCELED";
+  const badgeKey =
+    subscriptionStatus === "TRIALING"
+      ? "billing.trialBadge"
+      : subscriptionStatus === "PAST_DUE"
+        ? "billing.pastDueBadge"
+        : subscriptionStatus === "CANCELED"
+          ? "billing.canceledBadge"
+          : "billing.activeBadge";
 
   return (
     <div className="flex min-h-full flex-col">
@@ -91,7 +105,7 @@ export function BillingView({
             <div className="mt-4 flex flex-col gap-4">
               <div className="rounded-2xl bg-surface p-5 ring-1 ring-border">
                 <span className="rounded-full bg-primary-soft px-2.5 py-1 text-xs font-semibold text-primary">
-                  {subscriptionStatus === "TRIALING" ? t("billing.trialBadge") : t("billing.activeBadge")}
+                  {t(badgeKey)}
                 </span>
                 <p className="mt-2 text-sm text-ink-muted">
                   {subscriptionStatus === "TRIALING"
@@ -102,29 +116,44 @@ export function BillingView({
                 </p>
               </div>
 
-              <Button
-                size="lg"
-                disabled={loading !== null}
-                onClick={() => {
-                  setLoading("MONTH");
-                  go("/api/billing/checkout", { interval: "MONTH" });
-                }}
-              >
-                {t("billing.monthly", { price: monthlyKr })}
-              </Button>
-              <Button
-                variant="secondary"
-                size="lg"
-                disabled={loading !== null}
-                onClick={() => {
-                  setLoading("YEAR");
-                  go("/api/billing/checkout", { interval: "YEAR" });
-                }}
-              >
-                {t("billing.yearly", { price: monthlyKr * 10 })}
-              </Button>
+              {canPurchase ? (
+                <>
+                  <Button
+                    size="lg"
+                    disabled={loading !== null}
+                    onClick={() => {
+                      setLoading("MONTH");
+                      go("/api/billing/checkout", { interval: "MONTH" });
+                    }}
+                  >
+                    {t("billing.monthly", { price: monthlyKr })}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    disabled={loading !== null}
+                    onClick={() => {
+                      setLoading("YEAR");
+                      go("/api/billing/checkout", { interval: "YEAR" });
+                    }}
+                  >
+                    {t("billing.yearly", { price: monthlyKr * 10 })}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  size="lg"
+                  disabled={loading !== null}
+                  onClick={() => {
+                    setLoading("PORTAL");
+                    go("/api/billing/portal");
+                  }}
+                >
+                  {t("billing.manage")}
+                </Button>
+              )}
 
-              {hasStripeCustomer && (
+              {canPurchase && hasStripeCustomer && (
                 <button
                   type="button"
                   disabled={loading !== null}
@@ -137,7 +166,7 @@ export function BillingView({
                   {t("billing.manage")}
                 </button>
               )}
-              {!hasStripeCustomer && <p className="text-xs text-ink-faint">{t("billing.noCardYet")}</p>}
+              {canPurchase && !hasStripeCustomer && <p className="text-xs text-ink-faint">{t("billing.noCardYet")}</p>}
               {error && <p className="text-sm text-accent">{error}</p>}
             </div>
           )}

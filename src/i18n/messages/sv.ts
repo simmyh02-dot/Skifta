@@ -493,6 +493,8 @@ const sv = {
     trialDaysLeft: "{days} dagar kvar av din gratis provperiod.",
     trialEnded: "Din provperiod har gått ut.",
     activeBadge: "Aktivt abonnemang",
+    pastDueBadge: "Betalning misslyckades",
+    canceledBadge: "Avslutat abonnemang",
     planBas: "Bas",
     planFull: "Fullt paket",
     monthly: "Betala månadsvis ({price} kr/mån)",

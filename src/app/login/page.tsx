@@ -1,9 +1,18 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/session";
 import { Logo } from "@/components/ui/Logo";
 import { LangToggle } from "@/components/landing/LangToggle";
 import { LoginForm } from "@/components/auth/LoginForm";
 
-export default function LoginPage() {
+export const dynamic = "force-dynamic";
+
+// Already have a valid session (the 30-day cookie, §12.1)? Skip straight to
+// the app instead of making an already-logged-in person redo the OTP step.
+export default async function LoginPage() {
+  const session = await getSession();
+  if (session) redirect("/app");
+
   return (
     <div className="flex min-h-full flex-col">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-5">

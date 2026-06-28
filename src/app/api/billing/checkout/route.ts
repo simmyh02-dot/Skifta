@@ -27,8 +27,16 @@ export async function POST(req: Request) {
 
     const restaurant = await prisma.restaurant.findUniqueOrThrow({
       where: { id: activeRestaurantId },
-      select: { tier: true, stripeCustomerId: true, name: true },
+      select: { tier: true, stripeCustomerId: true, name: true, subscriptionStatus: true },
     });
+    // Already has a running subscription — buying again would create a
+    // second one instead of changing the existing one. Upgrade/downgrade/
+    // cancel goes through the portal instead (/api/billing/portal). The UI
+    // already hides these buttons for ACTIVE/PAST_DUE; this is the
+    // server-side enforcement of the same rule (never just UI-hiding).
+    if (restaurant.subscriptionStatus === "ACTIVE" || restaurant.subscriptionStatus === "PAST_DUE") {
+      return Response.json({ error: "already_subscribed" }, { status: 409 });
+    }
     const tier: RestaurantTier = VALID_TIERS.includes(body?.tier) ? body.tier : restaurant.tier;
     const priceId = priceIdFor(tier, interval);
 
