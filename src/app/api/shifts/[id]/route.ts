@@ -17,8 +17,7 @@ export async function PATCH(
     const shift = await updateShift(id, activeRestaurantId, {
       startsAt: body?.startsAt ? new Date(body.startsAt) : undefined,
       endsAt: body?.endsAt ? new Date(body.endsAt) : undefined,
-      assignedUserId:
-        body?.assignedUserId === undefined ? undefined : body.assignedUserId,
+      slots: typeof body?.slots === "number" && body.slots > 0 ? body.slots : undefined,
       note: body?.note === undefined ? undefined : body.note,
       requiredTagNames: Array.isArray(body?.requiredTagNames)
         ? body.requiredTagNames.filter((n: unknown) => typeof n === "string")

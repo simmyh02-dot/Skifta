@@ -1,6 +1,7 @@
 import QRCode from "qrcode";
 import { verifyClockToken } from "@/lib/clock-token";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/session";
 import { ClockKiosk } from "@/components/clock/ClockKiosk";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,10 @@ export default async function KioskPage({
 }) {
   const { token } = await params;
   const restaurantId = verifyClockToken(token);
+  // Best-effort only: this page stays fully public/token-gated either way
+  // (§5) — a session just lets the result screen offer a way back into the
+  // app instead of leaving a signed-in worker stranded on the public kiosk.
+  const session = await getSession();
 
   const restaurant = restaurantId
     ? await prisma.restaurant.findUnique({
@@ -42,6 +47,7 @@ export default async function KioskPage({
       tierLocked={restaurant ? restaurant.tier !== "FULL" : false}
       restaurantName={restaurant?.name ?? ""}
       qrSvg={qrSvg}
+      hasSession={!!session}
     />
   );
 }

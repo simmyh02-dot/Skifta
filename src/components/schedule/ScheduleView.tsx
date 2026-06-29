@@ -24,7 +24,8 @@ type ShiftDTO = {
   endsAt: string;
   status: "OPEN" | "ASSIGNED" | "COMPLETED" | "CANCELED";
   note: string | null;
-  assignedUser: Person | null;
+  slots: number;
+  assignments: { user: Person }[];
   requiredTags: { id: string; name: string }[];
   swapRequests: SwapRequest[];
   interests: { user: Person }[];
@@ -57,8 +58,10 @@ export function ScheduleView({
   const [fillMode, setFillMode] = useState(openShiftFill);
   const [members, setMembers] = useState<Member[] | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
   const [showAi, setShowAi] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   useEffect(() => {
     if (isAdmin && members === null) {
@@ -67,6 +70,18 @@ export function ScheduleView({
         .then((data) => data && setMembers(data.members));
     }
   }, [isAdmin, members]);
+
+  useEffect(() => {
+    function loadUnread() {
+      fetch("/api/notifications")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => data && setUnreadNotifications(data.unreadCount ?? 0))
+        .catch(() => {});
+    }
+    loadUnread();
+    const id = setInterval(loadUnread, 20_000);
+    return () => clearInterval(id);
+  }, []);
 
   async function loadWeek(start: string) {
     const res = await fetch(`/api/shifts?week=${encodeURIComponent(start)}`);
@@ -121,6 +136,14 @@ export function ScheduleView({
             <a href="/app/schedule" className="text-ink hover:text-primary">
               {t("app.nav.schedule")}
             </a>
+            <a href="/app/notifications" className="relative hover:text-primary">
+              {t("app.nav.notifications")}
+              {unreadNotifications > 0 && (
+                <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[0.625rem] font-semibold text-white">
+                  {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                </span>
+              )}
+            </a>
             <a href="/app/availability" className="hover:text-primary">
               {t("availability.title")}
             </a>
@@ -171,6 +194,15 @@ export function ScheduleView({
               >
                 {t("schedule.nextWeek")} →
               </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setShowBulk((s) => !s)}
+                  className="h-9 rounded-full border border-border-strong px-3 text-sm text-ink hover:bg-surface-2"
+                >
+                  {t("schedule.bulk.button")}
+                </button>
+              )}
               {isAdmin && canAiSchedule && (
                 <button
                   type="button"
@@ -187,6 +219,18 @@ export function ScheduleView({
               )}
             </div>
           </div>
+
+          {showBulk && isAdmin && (
+            <BulkShiftForm
+              weekStart={weekStart}
+              members={members ?? []}
+              onCreated={async () => {
+                setShowBulk(false);
+                await refresh();
+              }}
+              onCancel={() => setShowBulk(false)}
+            />
+          )}
 
           {showAi && isAdmin && canAiSchedule && (
             <AiScheduleAssistant
@@ -270,24 +314,71 @@ function ShiftCard({
   refresh: () => Promise<void>;
 }) {
   const { t } = useTranslations();
-  const isMine = shift.assignedUser?.id === userId;
+  const isMine = shift.assignments.some((a) => a.user.id === userId);
   const activeSwap = shift.swapRequests.find((s) =>
     ["PENDING", "ACCEPTED", "ESCALATED"].includes(s.status),
   );
+  const lastDeclinedSwap = !activeSwap
+    ? shift.swapRequests.find((s) => s.status === "DECLINED")
+    : undefined;
   const myTagIds = members?.find((m) => m.userId === userId)?.tagIds ?? [];
   const qualifiesForOpen =
     shift.requiredTags.length === 0 ||
     shift.requiredTags.every((tag) => myTagIds.includes(tag.id));
   const alreadyInterested = shift.interests.some((i) => i.user.id === userId);
+  const filled = shift.assignments.length;
+  const hasOpenSlot = shift.status === "OPEN" && filled < shift.slots;
+  const needsReplacement = shift.status === "OPEN" && filled > 0;
+  const assignableMembers = (members ?? []).filter(
+    (m) =>
+      !shift.assignments.some((a) => a.user.id === m.userId) &&
+      (shift.requiredTags.length === 0 ||
+        shift.requiredTags.every((tag) => m.tagIds.includes(tag.id))),
+  );
 
   return (
     <div className="rounded-xl bg-surface p-3 text-sm shadow-sm ring-1 ring-border">
       <p className="font-medium text-ink">
         {fmtTime(shift.startsAt)}–{fmtTime(shift.endsAt)}
       </p>
-      <p className="text-xs text-ink-muted">
-        {shift.assignedUser ? shift.assignedUser.displayName : t("schedule.unassigned")}
-      </p>
+
+      {filled === 0 ? (
+        <p className="text-xs text-ink-muted">{t("schedule.unassigned")}</p>
+      ) : (
+        <ul className="mt-0.5 flex flex-col gap-0.5">
+          {shift.assignments.map((a) => (
+            <li key={a.user.id} className="flex items-center gap-1.5 text-xs text-ink-muted">
+              <span>{a.user.displayName}</span>
+              {isAdmin && (
+                <button
+                  type="button"
+                  aria-label={t("schedule.actions.unassign", { name: a.user.displayName })}
+                  disabled={busy === `/api/shifts/${shift.id}/unassign`}
+                  onClick={() => call(`/api/shifts/${shift.id}/unassign`, { userId: a.user.id })}
+                  className="text-ink-faint hover:text-accent disabled:opacity-50"
+                >
+                  ×
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {shift.slots > 1 && (
+        <p className="mt-0.5 text-xs text-ink-faint">
+          {t("schedule.slotsFilled", { filled: String(filled), slots: String(shift.slots) })}
+        </p>
+      )}
+      {needsReplacement && (
+        <p className="mt-0.5 text-xs font-medium text-accent">{t("schedule.needsReplacement")}</p>
+      )}
+      {lastDeclinedSwap && (
+        <p className="mt-0.5 text-xs text-accent">
+          {t("schedule.swap.declinedBy", {
+            name: lastDeclinedSwap.directedTo?.displayName ?? lastDeclinedSwap.requestedBy.displayName,
+          })}
+        </p>
+      )}
       {shift.requiredTags.length > 0 && (
         <p className="mt-1 text-xs text-ink-faint">
           {shift.requiredTags.map((tg) => tg.name).join(", ")}
@@ -306,7 +397,7 @@ function ShiftCard({
         )}
 
         {/* Open shift: claim or express interest, if qualified */}
-        {shift.status === "OPEN" && !isAdmin && qualifiesForOpen && (
+        {hasOpenSlot && !isAdmin && qualifiesForOpen && !isMine && (
           fillMode === "FIRST_COME" ? (
             <ActionButton
               label={t("schedule.actions.claim")}
@@ -326,8 +417,8 @@ function ShiftCard({
           )
         )}
 
-        {/* Owner: pick among interested for a manual-pick open shift */}
-        {shift.status === "OPEN" && isAdmin && shift.interests.length > 0 && (
+        {/* Owner: pick among interested, or directly assign a qualified member to an open slot */}
+        {hasOpenSlot && isAdmin && (
           <div className="flex flex-col gap-1">
             {shift.interests.map((interest) => (
               <ActionButton
@@ -337,6 +428,23 @@ function ShiftCard({
                 onClick={() => call(`/api/shifts/${shift.id}/pick`, { userId: interest.user.id })}
               />
             ))}
+            {assignableMembers.length > 0 && (
+              <select
+                value=""
+                disabled={busy === `/api/shifts/${shift.id}/assign`}
+                onChange={(e) => {
+                  if (e.target.value) call(`/api/shifts/${shift.id}/assign`, { userId: e.target.value });
+                }}
+                className="h-7 rounded-full border border-border-strong bg-surface px-2 text-xs text-ink"
+              >
+                <option value="">{t("schedule.actions.assignMore")}</option>
+                {assignableMembers.map((m) => (
+                  <option key={m.userId} value={m.userId}>
+                    {m.displayName}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         )}
 
@@ -521,6 +629,7 @@ function NewShiftForm({
   const [start, setStart] = useState("17:00");
   const [end, setEnd] = useState("22:00");
   const [assignedUserId, setAssignedUserId] = useState("");
+  const [slots, setSlots] = useState("1");
   const [tags, setTags] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -543,6 +652,7 @@ function NewShiftForm({
           startsAt: startsAt.toISOString(),
           endsAt: endsAt.toISOString(),
           assignedUserId: assignedUserId || null,
+          slots: Math.max(1, parseInt(slots, 10) || 1),
           note: note || null,
           requiredTagNames: tags
             .split(",")
@@ -610,6 +720,17 @@ function NewShiftForm({
           ))}
         </select>
       </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-ink-muted">{t("schedule.form.slots")}</span>
+        <input
+          type="number"
+          min={1}
+          max={20}
+          value={slots}
+          onChange={(e) => setSlots(e.target.value)}
+          className={`${inputClass} w-20`}
+        />
+      </label>
       <label className="flex flex-1 flex-col gap-1">
         <span className="text-xs text-ink-muted">{t("schedule.form.tags")}</span>
         <input
@@ -624,6 +745,179 @@ function NewShiftForm({
         <input value={note} onChange={(e) => setNote(e.target.value)} className={inputClass} />
       </label>
       {error && <p className="w-full text-sm text-accent">{error}</p>}
+      <div className="flex gap-2">
+        <Button type="submit" disabled={loading}>
+          {t("schedule.form.save")}
+        </Button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="h-10 rounded-full border border-border-strong px-4 text-sm text-ink hover:bg-surface-2"
+        >
+          {t("schedule.form.cancel")}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+const WEEKDAY_LETTERS = [0, 1, 2, 3, 4, 5, 6];
+
+function BulkShiftForm({
+  weekStart,
+  members,
+  onCreated,
+  onCancel,
+}: {
+  weekStart: string;
+  members: Member[];
+  onCreated: () => void;
+  onCancel: () => void;
+}) {
+  const { t, m } = useTranslations();
+  const defaultDate = new Date(weekStart).toISOString().slice(0, 10);
+  const [startDate, setStartDate] = useState(defaultDate);
+  const [endDate, setEndDate] = useState(defaultDate);
+  const [weekdays, setWeekdays] = useState<number[]>([]);
+  const [start, setStart] = useState("17:00");
+  const [end, setEnd] = useState("22:00");
+  const [assignedUserId, setAssignedUserId] = useState("");
+  const [slots, setSlots] = useState("1");
+  const [tags, setTags] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ created: number; skipped: number } | null>(null);
+
+  const inputClass =
+    "h-10 rounded-lg border border-border bg-surface px-3 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
+
+  function toggleWeekday(d: number) {
+    setWeekdays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (weekdays.length === 0) {
+      setError(t("schedule.bulk.errorNoWeekday"));
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/shifts/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startDate,
+          endDate,
+          weekdays,
+          startTime: start,
+          endTime: end,
+          assignedUserId: assignedUserId || null,
+          slots: Math.max(1, parseInt(slots, 10) || 1),
+          note: note || null,
+          requiredTagNames: tags
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+        }),
+      });
+      if (!res.ok) {
+        setError(t("schedule.form.error"));
+        return;
+      }
+      const data = await res.json();
+      setResult({ created: data.created ?? 0, skipped: Array.isArray(data.skipped) ? data.skipped.length : 0 });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (result) {
+    return (
+      <div className="mt-4 flex flex-col gap-3 rounded-2xl bg-surface p-4 shadow-sm ring-1 ring-border">
+        <p className="text-sm text-ink">
+          {t("schedule.ai.done", { created: String(result.created) })}
+          {result.skipped > 0 && ` ${t("schedule.ai.doneSkipped", { skipped: String(result.skipped) })}`}
+        </p>
+        <Button onClick={onCreated}>{t("schedule.form.save")}</Button>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="mt-4 flex flex-col gap-3 rounded-2xl bg-surface p-4 shadow-sm ring-1 ring-border"
+    >
+      <p className="text-sm font-medium text-ink">{t("schedule.bulk.title")}</p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-ink-muted">{t("schedule.bulk.startDate")}</span>
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={inputClass} required />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-ink-muted">{t("schedule.bulk.endDate")}</span>
+          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={inputClass} required />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-ink-muted">{t("schedule.form.start")}</span>
+          <input type="time" value={start} onChange={(e) => setStart(e.target.value)} className={inputClass} required />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-ink-muted">{t("schedule.form.end")}</span>
+          <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} className={inputClass} required />
+        </label>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs text-ink-muted">{t("schedule.bulk.weekdays")}</span>
+        <div className="flex flex-wrap gap-1.5">
+          {WEEKDAY_LETTERS.map((d) => (
+            <button
+              key={d}
+              type="button"
+              onClick={() => toggleWeekday(d)}
+              className={`h-9 w-12 rounded-full text-xs font-medium ring-1 ${
+                weekdays.includes(d)
+                  ? "bg-primary text-primary-ink ring-primary"
+                  : "bg-surface text-ink ring-border-strong hover:bg-surface-2"
+              }`}
+            >
+              {m.schedule.weekdays[d]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-ink-muted">{t("schedule.form.assign")}</span>
+          <select value={assignedUserId} onChange={(e) => setAssignedUserId(e.target.value)} className={inputClass}>
+            <option value="">{t("schedule.form.assignOpen")}</option>
+            {members.map((mb) => (
+              <option key={mb.userId} value={mb.userId}>
+                {mb.displayName}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-ink-muted">{t("schedule.form.slots")}</span>
+          <input type="number" min={1} max={20} value={slots} onChange={(e) => setSlots(e.target.value)} className={`${inputClass} w-20`} />
+        </label>
+        <label className="flex flex-1 flex-col gap-1">
+          <span className="text-xs text-ink-muted">{t("schedule.form.tags")}</span>
+          <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder={t("schedule.form.tagsPlaceholder")} className={inputClass} />
+        </label>
+        <label className="flex flex-1 flex-col gap-1">
+          <span className="text-xs text-ink-muted">{t("schedule.form.note")}</span>
+          <input value={note} onChange={(e) => setNote(e.target.value)} className={inputClass} />
+        </label>
+      </div>
+
+      {error && <p className="text-sm text-accent">{error}</p>}
       <div className="flex gap-2">
         <Button type="submit" disabled={loading}>
           {t("schedule.form.save")}

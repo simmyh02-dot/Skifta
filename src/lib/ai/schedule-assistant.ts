@@ -63,22 +63,20 @@ export async function buildScheduleContext(
 
   const prevShifts = await prisma.shift.findMany({
     where: { restaurantId, startsAt: { gte: prevWeekStart, lt: prevWeekEnd } },
-    include: { assignedUser: { select: { displayName: true } } },
+    include: { assignments: { include: { user: { select: { displayName: true } } } } },
     orderBy: { startsAt: "asc" },
   });
 
-  const previousWeek = prevShifts
-    .filter((s) => s.assignedUser)
-    .map((s) => {
-      const startsAt = new Date(s.startsAt);
-      const isoWeekday = startsAt.getUTCDay() === 0 ? 7 : startsAt.getUTCDay();
-      return {
-        memberName: s.assignedUser!.displayName,
-        weekday: WEEKDAY_NAMES[isoWeekday - 1],
-        startTime: fmtTime(startsAt),
-        endTime: fmtTime(new Date(s.endsAt)),
-      };
-    });
+  const previousWeek = prevShifts.flatMap((s) => {
+    const startsAt = new Date(s.startsAt);
+    const isoWeekday = startsAt.getUTCDay() === 0 ? 7 : startsAt.getUTCDay();
+    return s.assignments.map((a) => ({
+      memberName: a.user.displayName,
+      weekday: WEEKDAY_NAMES[isoWeekday - 1],
+      startTime: fmtTime(startsAt),
+      endTime: fmtTime(new Date(s.endsAt)),
+    }));
+  });
 
   return { today: referenceDate.toISOString().slice(0, 10), members, previousWeek };
 }

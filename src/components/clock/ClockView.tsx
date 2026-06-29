@@ -8,6 +8,7 @@ import { LangToggle } from "@/components/landing/LangToggle";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { Avatar } from "@/components/ui/Avatar";
 import { MobileTabBar } from "@/components/app/MobileTabBar";
+import { QrClockInOverlay } from "@/components/clock/QrClockInOverlay";
 import { QrIcon, ScanIcon } from "@/components/ui/icons";
 
 type Flag = { minutesDelta: number; severity: "NONE" | "LOW" | "HIGH" };
@@ -62,6 +63,7 @@ export function ClockView({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [nowTs, setNowTs] = useState(() => new Date());
+  const [scanning, setScanning] = useState(false);
 
   const load = useCallback(() => {
     fetch("/api/clock/history")
@@ -106,6 +108,9 @@ export function ClockView({
     return rows.sort((a, b) => +new Date(b.key) - +new Date(a.key));
   }, [data, t]);
 
+  // Clock-OUT only (§5/§6.2) — session + own-device Face ID, no QR needed.
+  // Clock-IN is gated behind the QR overlay below; it must never be reachable
+  // through this function.
   async function stamp() {
     if (busy || !data) return;
     if (!data.hasDevice) {
@@ -207,30 +212,33 @@ export function ClockView({
           <div className="mt-5 flex items-center gap-3">
             <button
               type="button"
-              onClick={stamp}
+              onClick={clockedIn ? stamp : () => setScanning(true)}
               disabled={busy}
               className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-surface text-base font-semibold text-primary shadow-sm transition active:scale-[0.98] disabled:opacity-70"
             >
               <span className="inline-block h-2.5 w-2.5 rounded-sm bg-primary" />
               {clockedIn ? t("clock.clockOut") : t("clock.clockIn")}
             </button>
-            <button
-              type="button"
-              onClick={stamp}
-              disabled={busy}
-              aria-label={t("clock.clockIn")}
-              className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-xl text-primary-ink hover:bg-white/25 disabled:opacity-70"
-            >
-              <QrIcon />
-            </button>
+            {!clockedIn && (
+              <button
+                type="button"
+                onClick={() => setScanning(true)}
+                disabled={busy}
+                aria-label={t("clock.clockIn")}
+                className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-xl text-primary-ink hover:bg-white/25 disabled:opacity-70"
+              >
+                <QrIcon />
+              </button>
+            )}
           </div>
         </section>
 
         <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-xs text-ink-muted">
           <ScanIcon className="text-sm" />
-          {t("clock.confirmFaceId")}
+          {clockedIn ? t("clock.confirmFaceId") : t("clock.scan.hint")}
         </p>
         {msg && <p className="mt-2 text-center text-xs text-accent">{msg}</p>}
+        {scanning && <QrClockInOverlay onClose={() => setScanning(false)} />}
 
         {/* Period total + history */}
         <div className="mt-7 flex items-baseline justify-between">

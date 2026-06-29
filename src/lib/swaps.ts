@@ -19,7 +19,12 @@ const OPEN_SWAP: SwapStatus[] = ["PENDING", "ESCALATED"];
 
 export async function startSwap(shiftId: string, requestedById: string, restaurantId: string) {
   const shift = await prisma.shift.findFirst({
-    where: { id: shiftId, restaurantId, assignedUserId: requestedById, status: "ASSIGNED" },
+    where: {
+      id: shiftId,
+      restaurantId,
+      status: "ASSIGNED",
+      assignments: { some: { userId: requestedById } },
+    },
     include: { restaurant: { select: { name: true, swapDefaultMode: true, swapEscalationMinutes: true } } },
   });
   if (!shift) return null;
@@ -42,8 +47,10 @@ export async function startSwap(shiftId: string, requestedById: string, restaura
     const qualified = await qualifiedMembers(restaurantId, shiftId);
     await notifySwapNeedsReply(
       qualified.filter((u) => u.id !== requestedById).map((u) => u.id),
+      restaurantId,
       restaurant.name,
       shift.startsAt,
+      swap.id,
     );
   }
 
@@ -69,7 +76,13 @@ export async function directSwap(
     where: { id: swapId },
     data: { directedToId },
   });
-  await notifySwapNeedsReply([directedToId], swap.shift.restaurant.name, swap.shift.startsAt);
+  await notifySwapNeedsReply(
+    [directedToId],
+    restaurantId,
+    swap.shift.restaurant.name,
+    swap.shift.startsAt,
+    swap.id,
+  );
   return true;
 }
 
@@ -95,7 +108,7 @@ export async function acceptSwap(
     data: { acceptedById: userId, status: "ACCEPTED" },
   });
   if (result.count > 0) {
-    await notifySwapAccepted(restaurantId, swap.shift.restaurant.name, swap.shift.startsAt);
+    await notifySwapAccepted(restaurantId, swap.shift.restaurant.name, swap.shift.startsAt, swapId);
   }
   return result.count > 0;
 }
@@ -139,9 +152,11 @@ export async function approveSwap(
   );
 
   await prisma.$transaction([
-    prisma.shift.update({
-      where: { id: swap.shiftId },
-      data: { assignedUserId: swap.acceptedById },
+    prisma.shiftAssignment.deleteMany({
+      where: { shiftId: swap.shiftId, userId: swap.requestedById },
+    }),
+    prisma.shiftAssignment.create({
+      data: { shiftId: swap.shiftId, userId: swap.acceptedById },
     }),
     prisma.shiftSwapRequest.update({
       where: { id: swapId },
@@ -152,8 +167,10 @@ export async function approveSwap(
   await notifySwapApproved(
     swap.acceptedById,
     swap.requestedById,
+    restaurantId,
     swap.shift.restaurant.name,
     swap.shift.startsAt,
+    swapId,
   );
   return true;
 }
@@ -198,6 +215,7 @@ export async function escalateOverdueSwaps(now: Date = new Date()): Promise<numb
       swap.shift.restaurant.id,
       swap.shift.restaurant.name,
       swap.shift.startsAt,
+      swap.id,
     );
     escalated++;
   }

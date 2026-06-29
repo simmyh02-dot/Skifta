@@ -78,6 +78,29 @@ enum SwapStatus {
   CANCELED
 }
 
+enum ShiftInterestStatus {
+  PENDING
+  ACCEPTED // this candidate was the one picked
+  REJECTED // the shift filled with someone else; surfaced + notified, never silently dropped
+}
+
+enum NotificationType {
+  SHIFT_ASSIGNED
+  SHIFT_CHANGED
+  SWAP_NEEDS_REPLY
+  SWAP_ACCEPTED
+  SWAP_APPROVED
+  SWAP_ESCALATED
+  INTEREST_REJECTED
+  DEVIATION_DIGEST
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+  ACTIONED // the worker acted on it (accepted/declined/picked) from the feed
+}
+
 enum ClockDirection {
   IN
   OUT
@@ -148,7 +171,7 @@ model User {
   pinCredentials      PinCredential[]
   employeeTags        EmployeeTag[]
   availabilities      Availability[]
-  assignedShifts      Shift[]                @relation("ShiftAssignee")
+  shiftAssignments    ShiftAssignment[]
   clockEvents         ClockEvent[]
   adjustmentsMade     ClockEventAdjustment[] @relation("AdjustmentAuthor")
   swapsRequested      ShiftSwapRequest[]     @relation("SwapRequester")
@@ -162,6 +185,7 @@ model User {
   deviationsAbout     Deviation[]            @relation("DeviationSubject")
   deviationsAssigned  Deviation[]            @relation("DeviationAssignee")
   deviationsReviewed  Deviation[]            @relation("DeviationReviewer")
+  notifications       Notification[]
 }
 
 /// §9 WebAuthnCredential — many per User (one per device). Stores the public
@@ -335,21 +359,23 @@ model EmployeeTag {
 
 // ─────────────────────────── Scheduling ──────────────────────────
 
-/// §6.1/§9 Shift — assignedUser is null for open shifts. `requiredTags` gate who
-/// gets notified about open shifts and swap requests (§7 matching).
+/// §6.1/§9 Shift — `slots` is how many people it takes; OPEN while filled
+/// assignments are fewer than `slots`, ASSIGNED ("full") once they meet it.
+/// `requiredTags` gate who gets notified about open shifts and swap requests
+/// (§7 matching).
 model Shift {
-  id             String      @id @default(cuid())
-  restaurantId   String
-  startsAt       DateTime
-  endsAt         DateTime
-  assignedUserId String?
-  status         ShiftStatus @default(OPEN)
-  note           String?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  id           String      @id @default(cuid())
+  restaurantId String
+  startsAt     DateTime
+  endsAt       DateTime
+  slots        Int         @default(1)
+  status       ShiftStatus @default(OPEN)
+  note         String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   restaurant   Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  assignedUser User?              @relation("ShiftAssignee", fields: [assignedUserId], references: [id])
+  assignments  ShiftAssignment[]
   requiredTags Tag[]              @relation("ShiftRequiredTags")
   swapRequests ShiftSwapRequest[]
   interests    ShiftInterest[]
@@ -357,9 +383,10 @@ model Shift {
   @@index([restaurantId, startsAt])
 }
 
-/// §6.1 ShiftInterest — for MANUAL_PICK open shifts: an employee raises a
-/// hand, the owner picks one. Irrelevant once the shift is no longer OPEN.
-model ShiftInterest {
+/// §6.1/§9 ShiftAssignment — one row per person filling one of a shift's
+/// `slots`. Replaces the old single `Shift.assignedUserId` so a shift can take
+/// several people at once.
+model ShiftAssignment {
   id        String   @id @default(cuid())
   shiftId   String
   userId    String
@@ -369,6 +396,51 @@ model ShiftInterest {
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([shiftId, userId])
+  @@index([userId])
+}
+
+/// §6.1 ShiftInterest — for MANUAL_PICK open shifts: an employee raises a
+/// hand, the owner picks one. `status` defaults PENDING; once the shift fills,
+/// the picked candidate becomes ACCEPTED and every other pending candidate is
+/// marked REJECTED (and notified) rather than silently deleted.
+model ShiftInterest {
+  id        String              @id @default(cuid())
+  shiftId   String
+  userId    String
+  status    ShiftInterestStatus @default(PENDING)
+  createdAt DateTime            @default(now())
+
+  shift Shift @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([shiftId, userId])
+}
+
+/// §6.1 Notification — the in-app feed mirror of `notify.ts`'s SMS/e-mail
+/// sends. Additive: SMS/e-mail keeps firing exactly as before, this is just a
+/// queryable record a worker can see and act on inside Skifta. Stores
+/// structured data, not pre-rendered text — the feed renders copy through
+/// `t()` keyed on `type` (build rule #1; SMS bodies are an explicit exception
+/// for an outbound channel, but an in-app feed is not). `actionable` items
+/// (e.g. a swap needing a reply) get acted on via the existing swap/pick
+/// endpoints — this table never becomes a second write path.
+model Notification {
+  id             String             @id @default(cuid())
+  userId         String
+  restaurantId   String
+  type           NotificationType
+  restaurantName String
+  startsAt       DateTime?
+  count          Int?
+  relatedShiftId String?
+  relatedSwapId  String?
+  actionable     Boolean            @default(false)
+  status         NotificationStatus @default(UNREAD)
+  createdAt      DateTime           @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 /// §6.1/§9 ShiftSwapRequest — the "sick → request → reply → approval" flow that

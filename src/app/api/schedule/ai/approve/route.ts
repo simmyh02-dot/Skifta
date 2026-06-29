@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { createShift } from "@/lib/shifts";
+import { localDateTimeToUtc } from "@/lib/local-time";
 import { requireUser, requirePermission, errorResponse } from "@/lib/guard";
 
 type ShiftInput = {
@@ -40,8 +41,11 @@ export async function POST(req: Request) {
     const skipped: { date: string; startTime: string; reason: string }[] = [];
 
     for (const row of rows) {
-      const startsAt = new Date(`${row.date}T${row.startTime}:00`);
-      const endsAt = new Date(`${row.date}T${row.endTime}:00`);
+      // The AI proposes wall-clock local time; convert via the restaurant's
+      // fixed timezone instead of `new Date()`, which would parse a bare
+      // "YYYY-MM-DDTHH:MM:00" string as UTC and silently shift every time.
+      const startsAt = localDateTimeToUtc(row.date, row.startTime);
+      const endsAt = localDateTimeToUtc(row.date, row.endTime);
       if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
         skipped.push({ date: row.date, startTime: row.startTime, reason: "invalid_time" });
         continue;

@@ -35,7 +35,7 @@ export async function GET(req: Request) {
             endsAt: true,
             status: true,
             note: true,
-            assignedUser: { select: { displayName: true } },
+            assignments: { include: { user: { select: { displayName: true } } } },
             requiredTags: { select: { name: true } },
           },
         },
@@ -91,7 +91,7 @@ export async function GET(req: Request) {
         endsAt: s.endsAt.toISOString(),
         status: s.status,
         note: s.note,
-        assignedTo: s.assignedUser?.displayName ?? null,
+        assignedTo: s.assignments.map((a) => a.user.displayName).join(", ") || null,
         requiredTags: s.requiredTags.map((t) => t.name),
       })),
       clockEvents: restaurant.clockEvents.map((e) => ({

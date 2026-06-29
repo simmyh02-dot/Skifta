@@ -203,7 +203,7 @@ async function matchShift(
   const shifts = await prisma.shift.findMany({
     where: {
       restaurantId,
-      assignedUserId: userId,
+      assignments: { some: { userId } },
       startsAt: { gte: dayStart, lt: dayEnd },
     },
   });

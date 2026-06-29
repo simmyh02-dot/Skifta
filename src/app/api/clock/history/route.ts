@@ -47,7 +47,7 @@ export async function GET() {
       prisma.shift.findFirst({
         where: {
           restaurantId: activeRestaurantId,
-          assignedUserId: userId,
+          assignments: { some: { userId } },
           startsAt: { gte: dayStart, lt: dayEnd },
         },
         orderBy: { startsAt: "asc" },

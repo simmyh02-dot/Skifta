@@ -42,6 +42,21 @@ function useOnline() {
   return useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true);
 }
 
+/** Maps a `/api/clock/stamp` error code to its own message — see the call
+ *  site for why this matters. */
+function stampErrorKey(error: string | undefined): "clock.kiosk.tierLocked" | "clock.kiosk.tokenExpired" | "clock.kiosk.notAMember" | "clock.kiosk.identityFailed" {
+  switch (error) {
+    case "tier_locked":
+      return "clock.kiosk.tierLocked";
+    case "invalid_token":
+      return "clock.kiosk.tokenExpired";
+    case "not_a_member":
+      return "clock.kiosk.notAMember";
+    default:
+      return "clock.kiosk.identityFailed";
+  }
+}
+
 function fmtTime(d: Date | string) {
   return new Date(d).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
@@ -52,12 +67,14 @@ export function ClockKiosk({
   tierLocked,
   restaurantName,
   qrSvg,
+  hasSession = false,
 }: {
   token: string;
   valid: boolean;
   tierLocked: boolean;
   restaurantName: string;
   qrSvg: string;
+  hasSession?: boolean;
 }) {
   const { t, locale } = useTranslations();
   const [pin, setPin] = useState("");
@@ -152,7 +169,10 @@ export function ClockKiosk({
         return;
       }
       const data = await res.json().catch(() => ({}));
-      setError(data.error === "tier_locked" ? t("clock.kiosk.tierLocked") : t("clock.kiosk.identityFailed"));
+      // Each error code gets its own message — collapsing them all into
+      // "we don't recognise you" hid the real cause (e.g. a stale/invalid
+      // place-token, which has nothing to do with the person's identity).
+      setError(t(stampErrorKey(data.error)));
       setPin("");
     } catch {
       // Network failure: never tell staff it didn't work. Queue and reassure.
@@ -238,6 +258,14 @@ export function ClockKiosk({
           )}
           <span className="mt-2 text-sm text-ink-faint">{t("clock.kiosk.again")}</span>
         </button>
+        {hasSession && result.kind === "stamped" && (
+          <a
+            href="/app/clock"
+            className="mt-4 self-center text-sm text-ink-faint hover:text-ink-muted hover:underline"
+          >
+            {t("clock.kiosk.backToApp")}
+          </a>
+        )}
       </Shell>
     );
   }
