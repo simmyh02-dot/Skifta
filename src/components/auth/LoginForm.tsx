@@ -12,6 +12,11 @@ export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") || "/app";
+  // A `next` param means the proxy bounced an expired/no-session visit to an
+  // app page here, not someone choosing to log in from the marketing site —
+  // a clearer "you were signed out" framing reads as more deliberate than
+  // the generic first-time login copy.
+  const expired = params.has("next");
 
   const [step, setStep] = useState<Step>("contact");
   const [contact, setContact] = useState("");
@@ -74,10 +79,10 @@ export function LoginForm() {
       <form onSubmit={requestCode} className="flex flex-col gap-4">
         <div>
           <h1 className="text-2xl font-bold text-ink">
-            {t("auth.login.title")}
+            {expired ? t("auth.login.expiredTitle") : t("auth.login.title")}
           </h1>
           <p className="mt-1.5 text-sm text-ink-muted">
-            {t("auth.login.subtitle")}
+            {expired ? t("auth.login.expiredSubtitle") : t("auth.login.subtitle")}
           </p>
         </div>
         <label className="flex flex-col gap-1.5">

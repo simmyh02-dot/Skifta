@@ -1,7 +1,7 @@
 import { normalizeContact } from "@/lib/contact";
 import { prisma } from "@/lib/prisma";
 import { verifyCode } from "@/lib/otp";
-import { createSession } from "@/lib/session";
+import { createSession, rememberDevice } from "@/lib/session";
 
 // POST { contact, code } → verifies the login code and, on success, mints a
 // session. Auto-selects the restaurant if the user belongs to exactly one,
@@ -44,6 +44,7 @@ export async function POST(req: Request) {
     memberships.length === 1 ? memberships[0].restaurantId : undefined;
 
   await createSession({ userId: user.id, activeRestaurantId });
+  await rememberDevice({ userId: user.id, activeRestaurantId });
 
   return Response.json({ ok: true, restaurantCount: memberships.length });
 }

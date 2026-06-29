@@ -2,7 +2,7 @@ import type { RestaurantTier } from "@prisma/client";
 import { normalizeContact } from "@/lib/contact";
 import { prisma } from "@/lib/prisma";
 import { verifyCode } from "@/lib/otp";
-import { createSession } from "@/lib/session";
+import { createSession, rememberDevice } from "@/lib/session";
 import { TRIAL_DAYS } from "@/lib/billing";
 
 const VALID_TIERS: RestaurantTier[] = ["BAS", "FULL"];
@@ -85,5 +85,6 @@ export async function POST(req: Request) {
   });
 
   await createSession({ userId, activeRestaurantId: restaurantId });
+  await rememberDevice({ userId, activeRestaurantId: restaurantId });
   return Response.json({ ok: true });
 }

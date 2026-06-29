@@ -1,6 +1,6 @@
 import { verifyCode } from "@/lib/otp";
 import { acceptInvite, getLiveInvite } from "@/lib/invite";
-import { createSession } from "@/lib/session";
+import { createSession, rememberDevice } from "@/lib/session";
 
 // POST { code } → verify the OTP against the invite's own contact, then
 // consume the invite: create/join the User + Membership and sign them in
@@ -37,6 +37,10 @@ export async function POST(
   }
 
   await createSession({
+    userId: result.userId,
+    activeRestaurantId: result.restaurantId,
+  });
+  await rememberDevice({
     userId: result.userId,
     activeRestaurantId: result.restaurantId,
   });
