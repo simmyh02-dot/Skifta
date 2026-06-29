@@ -8,6 +8,7 @@ import { LogoutButton } from "@/components/auth/LogoutButton";
 import { Avatar } from "@/components/ui/Avatar";
 import { MobileTabBar } from "@/components/app/MobileTabBar";
 import { ArrowDownIcon, CheckIcon } from "@/components/ui/icons";
+import { parseTemplateHeaders } from "@/lib/export-template";
 
 type ExportFormat = "FORTNOX" | "VISMA" | "CSV" | "CUSTOM";
 
@@ -772,6 +773,119 @@ function DeviationCard({
 
 const FORMATS: ExportFormat[] = ["FORTNOX", "VISMA", "CSV", "CUSTOM"];
 
+type MappingRow = { header: string; field: ExportFieldName | null };
+type ExportFieldName = "employee" | "periodStart" | "periodEnd" | "hours";
+const EXPORT_FIELD_NAMES: ExportFieldName[] = ["employee", "periodStart", "periodEnd", "hours"];
+
+function CustomTemplateSection() {
+  const { t } = useTranslations();
+  const [rows, setRows] = useState<MappingRow[]>([]);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [current, setCurrent] = useState<MappingRow[] | null>(null);
+
+  useEffect(() => {
+    fetch("/api/economy/export/template")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { mapping: MappingRow[] | null } | null) => {
+        if (d?.mapping) setCurrent(d.mapping);
+      });
+  }, []);
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    const headers = parseTemplateHeaders(text);
+    setFileName(file.name);
+    setRows(headers.map((header) => ({ header, field: null })));
+    setError(null);
+  }
+
+  function setField(index: number, field: ExportFieldName | null) {
+    setRows((rs) => rs.map((r, i) => (i === index ? { ...r, field } : r)));
+  }
+
+  async function save() {
+    setError(null);
+    const res = await fetch("/api/economy/export/template", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mapping: rows }),
+    });
+    if (res.ok) {
+      setCurrent(rows);
+      setSavedMsg(t("economy.exportPanel.customTemplate.saved"));
+      setTimeout(() => setSavedMsg(null), 2500);
+    } else {
+      setError(t("economy.exportPanel.customTemplate.invalid"));
+    }
+  }
+
+  const usedFields = new Set(rows.map((r) => r.field).filter((f): f is ExportFieldName => f != null));
+
+  return (
+    <div className="mt-4 rounded-xl border border-border p-4">
+      <h3 className="font-medium text-ink">{t("economy.exportPanel.customTemplate.title")}</h3>
+      <p className="mt-1 text-sm text-ink-muted">{t("economy.exportPanel.customTemplate.hint")}</p>
+
+      {current && rows.length === 0 && (
+        <p className="mt-2 text-sm text-ink-faint">
+          {t("economy.exportPanel.customTemplate.current", { count: current.length })}
+        </p>
+      )}
+      {!current && rows.length === 0 && (
+        <p className="mt-2 text-sm text-ink-faint">{t("economy.exportPanel.customTemplate.none")}</p>
+      )}
+
+      <label className="mt-3 inline-flex h-10 cursor-pointer items-center rounded-full border border-border-strong px-4 text-sm font-medium text-ink hover:bg-surface-2">
+        {t("economy.exportPanel.customTemplate.upload")}
+        <input type="file" accept=".csv,.txt" className="hidden" onChange={onFile} />
+      </label>
+      {fileName && rows.length > 0 && (
+        <p className="mt-2 text-sm text-ink-muted">
+          {t("economy.exportPanel.customTemplate.uploaded", { count: rows.length, filename: fileName })}
+        </p>
+      )}
+
+      {rows.length > 0 && (
+        <div className="mt-3 flex flex-col gap-2">
+          <h4 className="text-sm font-semibold text-ink">{t("economy.exportPanel.customTemplate.mapTitle")}</h4>
+          {rows.map((r, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-2">
+              <span className="min-w-32 rounded-md bg-surface-2 px-3 py-1.5 text-sm text-ink">{r.header}</span>
+              <select
+                value={r.field ?? ""}
+                onChange={(e) => setField(i, (e.target.value || null) as ExportFieldName | null)}
+                className="h-9 rounded-md border border-border bg-surface px-2 text-sm text-ink"
+              >
+                <option value="">{t("economy.exportPanel.customTemplate.blank")}</option>
+                {EXPORT_FIELD_NAMES.map((f) => (
+                  <option key={f} value={f} disabled={usedFields.has(f) && r.field !== f}>
+                    {t(`economy.exportPanel.customTemplate.fields.${f}`)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+          {error && <p className="text-sm text-accent">{error}</p>}
+          <div className="mt-1 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={save}
+              className="h-10 rounded-full bg-primary px-4 text-sm font-medium text-primary-ink hover:bg-primary-hover"
+            >
+              {t("economy.exportPanel.customTemplate.save")}
+            </button>
+            {savedMsg && <span className="text-sm text-primary">{savedMsg}</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsTab({ period, defaultFormat }: { period: string; defaultFormat: ExportFormat }) {
   const { t } = useTranslations();
   const [format, setFormat] = useState<ExportFormat>(defaultFormat);
@@ -838,6 +952,8 @@ function SettingsTab({ period, defaultFormat }: { period: string; defaultFormat:
           ))}
         </div>
 
+        {format === "CUSTOM" && <CustomTemplateSection />}
+
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -903,25 +1019,67 @@ function SettingsTab({ period, defaultFormat }: { period: string; defaultFormat:
   );
 }
 
+type ObWindowDraft = {
+  id: string;
+  label: string;
+  days: number[];
+  startMinute: number;
+  endMinute: number;
+  percent: number;
+};
+type ObOvertimeDraft = { thresholdHours: number; percent: number } | null;
+
+const CUSTOM_RULE_SET_ID = "custom";
+
+function toHHMM(minutes: number): string {
+  const h = Math.floor(minutes / 60).toString().padStart(2, "0");
+  const m = (minutes % 60).toString().padStart(2, "0");
+  return `${h}:${m}`;
+}
+function toMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
 function ObRulesSection() {
-  const { t } = useTranslations();
+  const { t, m } = useTranslations();
+  const weekdays = m.schedule.weekdays;
   const [presets, setPresets] = useState<{ id: string; name: string }[]>([]);
   const [activeId, setActiveId] = useState<string>("none");
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [name, setName] = useState("");
+  const [windows, setWindows] = useState<ObWindowDraft[]>([]);
+  const [overtime, setOvertime] = useState<ObOvertimeDraft>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     fetch("/api/economy/payroll/ruleset")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (d) {
+      .then(
+        (d: {
+          activeId: string;
+          presets: { id: string; name: string }[];
+          active: { name: string; windows: ObWindowDraft[]; overtime: ObOvertimeDraft } | null;
+        } | null) => {
+          if (!d) return;
           setPresets(d.presets);
           setActiveId(d.activeId);
-        }
-      });
+          if (d.activeId === CUSTOM_RULE_SET_ID && d.active) {
+            setName(d.active.name);
+            setWindows(d.active.windows);
+            setOvertime(d.active.overtime);
+          }
+        },
+      );
   }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function pick(id: string) {
     setActiveId(id);
+    setShowBuilder(false);
     const res = await fetch("/api/economy/payroll/ruleset", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -930,6 +1088,49 @@ function ObRulesSection() {
     if (res.ok) {
       setSavedMsg(t("economy.obRules.saved"));
       setTimeout(() => setSavedMsg(null), 2500);
+    }
+  }
+
+  function openBuilder() {
+    if (!name) setName(t("economy.obRules.customTitle"));
+    setShowBuilder(true);
+  }
+
+  function addWindow() {
+    setWindows((ws) => [
+      ...ws,
+      { id: `w${ws.length}-${Date.now()}`, label: "", days: [0, 1, 2, 3, 4], startMinute: 18 * 60, endMinute: 24 * 60, percent: 0.5 },
+    ]);
+  }
+  function removeWindow(id: string) {
+    setWindows((ws) => ws.filter((w) => w.id !== id));
+  }
+  function updateWindow(id: string, patch: Partial<ObWindowDraft>) {
+    setWindows((ws) => ws.map((w) => (w.id === id ? { ...w, ...patch } : w)));
+  }
+  function toggleDay(id: string, day: number) {
+    setWindows((ws) =>
+      ws.map((w) => {
+        if (w.id !== id) return w;
+        const days = w.days.includes(day) ? w.days.filter((d) => d !== day) : [...w.days, day].sort();
+        return { ...w, days };
+      }),
+    );
+  }
+
+  async function saveCustom() {
+    setError(null);
+    const res = await fetch("/api/economy/payroll/ruleset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ custom: { name, windows, overtime } }),
+    });
+    if (res.ok) {
+      setActiveId(CUSTOM_RULE_SET_ID);
+      setSavedMsg(t("economy.obRules.saved"));
+      setTimeout(() => setSavedMsg(null), 2500);
+    } else {
+      setError(t("economy.obRules.invalid"));
     }
   }
 
@@ -950,8 +1151,162 @@ function ObRulesSection() {
             {p.name}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={openBuilder}
+          className={`h-10 rounded-full px-4 text-sm font-medium transition-colors ${
+            activeId === CUSTOM_RULE_SET_ID ? "bg-primary text-primary-ink" : "bg-surface-2 text-ink-muted hover:text-ink"
+          }`}
+        >
+          {t("economy.obRules.customize")}
+        </button>
         {savedMsg && <span className="self-center text-sm text-primary">{savedMsg}</span>}
       </div>
+
+      {showBuilder && (
+        <div className="mt-5 rounded-xl border border-border p-4">
+          <h3 className="font-medium text-ink">{t("economy.obRules.customTitle")}</h3>
+          <label className="mt-3 flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-ink">{t("economy.obRules.nameLabel")}</span>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t("economy.obRules.namePlaceholder")}
+              className="h-11 rounded-lg border border-border bg-surface px-3 text-sm text-ink"
+            />
+          </label>
+
+          <h4 className="mt-5 text-sm font-semibold text-ink">{t("economy.obRules.windowsTitle")}</h4>
+          {windows.length === 0 && (
+            <p className="mt-2 text-sm text-ink-faint">{t("economy.obRules.noWindows")}</p>
+          )}
+          <div className="mt-2 flex flex-col gap-3">
+            {windows.map((w) => (
+              <div key={w.id} className="rounded-lg bg-surface-2 p-3">
+                <div className="flex items-start gap-2">
+                  <input
+                    type="text"
+                    value={w.label}
+                    onChange={(e) => updateWindow(w.id, { label: e.target.value })}
+                    placeholder={t("economy.obRules.windowLabelPlaceholder")}
+                    className="h-10 flex-1 rounded-lg border border-border bg-surface px-3 text-sm text-ink"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeWindow(w.id)}
+                    className="h-10 shrink-0 rounded-lg px-3 text-sm text-ink-muted hover:text-accent"
+                  >
+                    {t("economy.obRules.removeWindow")}
+                  </button>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {weekdays.map((label: string, i: number) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => toggleDay(w.id, i)}
+                      className={`h-8 w-10 rounded-md text-xs font-medium ${
+                        w.days.includes(i) ? "bg-primary text-primary-ink" : "bg-surface text-ink-muted"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 flex flex-wrap items-end gap-3">
+                  <label className="flex flex-col gap-1 text-xs text-ink-muted">
+                    {t("economy.obRules.from")}
+                    <input
+                      type="time"
+                      value={toHHMM(w.startMinute)}
+                      onChange={(e) => updateWindow(w.id, { startMinute: toMinutes(e.target.value) })}
+                      className="h-9 rounded-md border border-border bg-surface px-2 text-sm text-ink"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs text-ink-muted">
+                    {t("economy.obRules.to")}
+                    <input
+                      type="time"
+                      value={toHHMM(w.endMinute === 1440 ? 1439 : w.endMinute)}
+                      onChange={(e) => {
+                        const v = toMinutes(e.target.value);
+                        updateWindow(w.id, { endMinute: v === 1439 ? 1440 : v });
+                      }}
+                      className="h-9 rounded-md border border-border bg-surface px-2 text-sm text-ink"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs text-ink-muted">
+                    {t("economy.obRules.uplift")}
+                    <input
+                      type="number"
+                      min={0}
+                      max={500}
+                      step={1}
+                      value={Math.round(w.percent * 100)}
+                      onChange={(e) => updateWindow(w.id, { percent: Number(e.target.value) / 100 })}
+                      className="h-9 w-20 rounded-md border border-border bg-surface px-2 text-sm text-ink"
+                    />
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={addWindow}
+            className="mt-3 h-10 rounded-full border border-border-strong px-4 text-sm font-medium text-ink hover:bg-surface-2"
+          >
+            {t("economy.obRules.addWindow")}
+          </button>
+
+          <h4 className="mt-5 text-sm font-semibold text-ink">{t("economy.obRules.overtimeTitle")}</h4>
+          <label className="mt-2 flex items-center gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={overtime != null}
+              onChange={(e) => setOvertime(e.target.checked ? { thresholdHours: 40, percent: 0.5 } : null)}
+            />
+            {t("economy.obRules.overtimeEnabled")}
+          </label>
+          {overtime && (
+            <div className="mt-2 flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1 text-xs text-ink-muted">
+                {t("economy.obRules.overtimeThreshold")}
+                <input
+                  type="number"
+                  min={1}
+                  max={168}
+                  value={overtime.thresholdHours}
+                  onChange={(e) => setOvertime({ ...overtime, thresholdHours: Number(e.target.value) })}
+                  className="h-9 w-24 rounded-md border border-border bg-surface px-2 text-sm text-ink"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-ink-muted">
+                {t("economy.obRules.overtimePercent")}
+                <input
+                  type="number"
+                  min={0}
+                  max={500}
+                  value={Math.round(overtime.percent * 100)}
+                  onChange={(e) => setOvertime({ ...overtime, percent: Number(e.target.value) / 100 })}
+                  className="h-9 w-24 rounded-md border border-border bg-surface px-2 text-sm text-ink"
+                />
+              </label>
+            </div>
+          )}
+
+          <p className="mt-4 text-xs text-ink-faint">{t("economy.obRules.versionHint")}</p>
+          {error && <p className="mt-2 text-sm text-accent">{error}</p>}
+          <button
+            type="button"
+            onClick={saveCustom}
+            className="mt-3 h-11 rounded-full bg-primary px-5 text-sm font-medium text-primary-ink hover:bg-primary-hover"
+          >
+            {t("economy.obRules.save")}
+          </button>
+        </div>
+      )}
     </section>
   );
 }
