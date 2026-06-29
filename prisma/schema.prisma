@@ -231,6 +231,12 @@ model Restaurant {
   trialAiCallCount   Int       @default(0)
   trialAiFlaggedAt   DateTime? // set once the soft cap is first exceeded, for manual review
 
+  // §6.2/§6.3 weekly deviation digest — last time the owner summary went out,
+  // so the daily cron can send it on a ~7-day cadence without a second
+  // Vercel Cron schedule and without depending on the cron firing on an exact
+  // weekday (catches up after downtime instead of silently skipping a week).
+  deviationDigestSentAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

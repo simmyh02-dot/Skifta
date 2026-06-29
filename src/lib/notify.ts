@@ -144,3 +144,17 @@ export async function notifySwapEscalated(
     SUBJECT,
   );
 }
+
+/** Weekly summary of open clock deviations, so flags don't sit silent between
+ *  payroll runs (§6.2/§6.3). */
+export async function notifyDeviationDigest(
+  restaurantId: string,
+  restaurantName: string,
+  openCount: number,
+): Promise<void> {
+  await notifyMany(
+    await ownerIds(restaurantId),
+    `${restaurantName}: ${openCount} ${openCount === 1 ? "öppen avvikelse" : "öppna avvikelser"} väntar på granskning i Skifta.`,
+    SUBJECT,
+  );
+}
