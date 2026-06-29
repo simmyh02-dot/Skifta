@@ -9,6 +9,7 @@ import {
   splitExportable,
   buildExportCsv,
 } from "@/lib/economy";
+import type { ColumnMapping } from "@/lib/export-template";
 
 const FORMATS: ExportFormat[] = ["FORTNOX", "VISMA", "CSV", "CUSTOM"];
 
@@ -53,7 +54,16 @@ export async function GET(req: Request) {
       );
     }
 
-    const csv = buildExportCsv(exportable, format, { start, end });
+    let customMapping: ColumnMapping | null = null;
+    if (format === "CUSTOM") {
+      const template = await prisma.exportTemplate.findFirst({
+        where: { restaurantId: activeRestaurantId, format: "CUSTOM", isDefault: true },
+        select: { columnMapping: true },
+      });
+      customMapping = (template?.columnMapping as ColumnMapping | null) ?? null;
+    }
+
+    const csv = buildExportCsv(exportable, format, { start, end }, customMapping);
     const key = periodKey(periodDate);
     const slug = (restaurant?.name ?? "skifta").toLowerCase().replace(/[^a-z0-9]+/g, "-");
     const filename = `${slug}-${key}-${format.toLowerCase()}.csv`;

@@ -109,6 +109,22 @@ describe("buildExportCsv", () => {
     expect(csv.split("\r\n")[0]).toBe("Anställd,Tidkod,Timmar,Från,Till");
     expect(csv.split("\r\n")[1]).toBe("Erik L.,ARB,12,2026-06-01,2026-06-30");
   });
+
+  it("CUSTOM with a saved mapping uses the owner's exact header order/labels", () => {
+    const mapping = [
+      { header: "Namn", field: "employee" as const },
+      { header: "Kommentar", field: null },
+      { header: "Timmar", field: "hours" as const },
+    ];
+    const csv = buildExportCsv([member({ hours: 12 })], "CUSTOM", period, mapping);
+    expect(csv.split("\r\n")[0]).toBe("Namn,Kommentar,Timmar");
+    expect(csv.split("\r\n")[1]).toBe("Erik L.,,12");
+  });
+
+  it("CUSTOM with no saved mapping falls back to the generic layout", () => {
+    const csv = buildExportCsv([member({ hours: 12 })], "CUSTOM", period, null);
+    expect(csv.split("\r\n")[0]).toBe("Anställd,Periodstart,Periodslut,Arbetade timmar");
+  });
 });
 
 describe("roundHours", () => {

@@ -1,4 +1,5 @@
 import type { ExportFormat } from "@prisma/client";
+import type { ColumnMapping, ExportField } from "./export-template";
 
 // Economy/admin core (§6.3). This is the section that replaces the paper
 // logbook and the manual hour-counting. Two hard rules from the spec live here:
@@ -150,12 +151,30 @@ export function splitExportable(summaries: MemberSummary[]): {
   return { exportable, blocked };
 }
 
-/** Build the export CSV for the already-cleared members in the chosen format. */
+/** Build the export CSV for the already-cleared members in the chosen format.
+ *  For CUSTOM with a saved column mapping (§6.3 "import my own template"), the
+ *  owner's exact header order/labels are used instead of the generic fallback. */
 export function buildExportCsv(
   members: MemberSummary[],
   format: ExportFormat,
   period: { start: Date; end: Date },
+  customMapping?: ColumnMapping | null,
 ): string {
+  if (format === "CUSTOM" && customMapping && customMapping.length > 0) {
+    const values: Record<ExportField, string | number> = {
+      employee: "",
+      periodStart: isoDate(period.start),
+      periodEnd: isoDate(inclusiveEnd(period.end)),
+      hours: 0,
+    };
+    const headers = customMapping.map((c) => c.header);
+    const rows = members.map((m) => {
+      const row = { ...values, employee: m.displayName, hours: roundHours(m.hours) };
+      return customMapping.map((c) => (c.field ? row[c.field] : ""));
+    });
+    return toCsv(headers, rows);
+  }
+
   const cols = COLUMN_SETS[format];
   const rows = members.map((m) =>
     cols.row({
