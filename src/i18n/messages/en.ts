@@ -595,10 +595,12 @@ const en: Messages = {
       clock: "Clock in",
       profile: "Profile",
       admin: "Admin",
-      availability: "Available",
+      availability: "Availability",
       economy: "Economy",
       billing: "Billing",
       notifications: "Notifications",
+      settings: "Settings",
+      members: "Staff",
     },
     roles: {
       OWNER: "Owner",
@@ -629,6 +631,20 @@ const en: Messages = {
     noCardYet: "No card on file yet.",
     error: "Something went wrong. Try again.",
     unavailable: "Payment isn't available right now — try again later.",
+  },
+
+  settings: {
+    title: "Settings",
+    restaurantSection: "Restaurant",
+    restaurantNameLabel: "Restaurant name",
+    restaurantNamePlaceholder: "E.g. The Corner Bistro",
+    save: "Save",
+    saved: "Saved!",
+    saveError: "Something went wrong. Try again.",
+    openShiftLabel: "Open shifts",
+    openShiftHint: "How should open shifts be filled when nobody is scheduled?",
+    openShiftFirstCome: "First come, first served",
+    openShiftManual: "Manual pick",
   },
 
   frozenAccount: {

@@ -18,10 +18,20 @@ export default async function MembersAdminPage() {
   );
   if (!ctx || !can(ctx, "members:manage")) redirect("/app");
 
-  const invites = await prisma.invite.findMany({
-    where: { restaurantId: session.activeRestaurantId },
-    orderBy: { createdAt: "desc" },
-  });
+  const [invites, restaurant, user] = await Promise.all([
+    prisma.invite.findMany({
+      where: { restaurantId: session.activeRestaurantId },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.restaurant.findUnique({
+      where: { id: session.activeRestaurantId },
+      select: { name: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { displayName: true },
+    }),
+  ]);
 
   return (
     <MembersAdminView
@@ -33,6 +43,9 @@ export default async function MembersAdminPage() {
         status: i.status,
         expiresAt: i.expiresAt.toISOString(),
       }))}
+      role={ctx.role}
+      restaurantName={restaurant?.name ?? ""}
+      displayName={user?.displayName ?? ""}
     />
   );
 }

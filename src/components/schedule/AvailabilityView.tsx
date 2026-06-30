@@ -2,10 +2,8 @@
 
 import { useState } from "react";
 import { useTranslations } from "@/i18n/LocaleProvider";
-import { Logo } from "@/components/ui/Logo";
-import { LangToggle } from "@/components/landing/LangToggle";
-import { LogoutButton } from "@/components/auth/LogoutButton";
 import { Button } from "@/components/ui/Button";
+import { AppShell } from "@/components/app/AppShell";
 
 type Range = { weekday: number; startMinute: number; endMinute: number };
 
@@ -22,7 +20,17 @@ function toMinutes(hhmm: string): number {
   return h * 60 + m;
 }
 
-export function AvailabilityView({ initialRanges }: { initialRanges: Range[] }) {
+export function AvailabilityView({
+  initialRanges,
+  role,
+  restaurantName,
+  displayName,
+}: {
+  initialRanges: Range[];
+  role: string;
+  restaurantName: string;
+  displayName: string;
+}) {
   const { t, m } = useTranslations();
 
   const [days, setDays] = useState(() =>
@@ -66,21 +74,9 @@ export function AvailabilityView({ initialRanges }: { initialRanges: Range[] }) 
     "h-9 rounded-lg border border-border bg-surface px-2 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
 
   return (
-    <div className="flex min-h-full flex-col">
-      <header className="flex items-center justify-between border-b border-border px-5 py-4">
-        <div className="flex items-center gap-4">
-          <Logo />
-          <a href="/app/schedule" className="text-sm text-ink-muted hover:text-primary">
-            {t("app.nav.schedule")}
-          </a>
-        </div>
-        <div className="flex items-center gap-4">
-          <LangToggle />
-          <LogoutButton />
-        </div>
-      </header>
+    <AppShell role={role} restaurantName={restaurantName} displayName={displayName}>
       <main className="mx-auto w-full max-w-md flex-1 px-5 py-10">
-        <h1 className="text-xl font-bold text-ink">{t("availability.title")}</h1>
+        <h1 className="font-display text-2xl font-bold text-ink">{t("availability.title")}</h1>
         <p className="mt-1.5 text-sm text-ink-muted">{t("availability.subtitle")}</p>
 
         <form onSubmit={save} className="mt-6 flex flex-col gap-3">
@@ -134,6 +130,6 @@ export function AvailabilityView({ initialRanges }: { initialRanges: Range[] }) 
           </Button>
         </form>
       </main>
-    </div>
+    </AppShell>
   );
 }

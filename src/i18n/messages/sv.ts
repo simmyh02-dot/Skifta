@@ -598,10 +598,12 @@ const sv = {
       clock: "Stämpla",
       profile: "Profil",
       admin: "Admin",
-      availability: "Tillgänglig",
+      availability: "Tillgänglighet",
       economy: "Ekonomi",
       billing: "Fakturering",
       notifications: "Notiser",
+      settings: "Inställningar",
+      members: "Personal",
     },
     roles: {
       OWNER: "Ägare",
@@ -632,6 +634,20 @@ const sv = {
     noCardYet: "Inget betalkort kopplat ännu.",
     error: "Något gick fel. Försök igen.",
     unavailable: "Betalning är inte tillgänglig just nu — försök igen senare.",
+  },
+
+  settings: {
+    title: "Inställningar",
+    restaurantSection: "Restaurang",
+    restaurantNameLabel: "Namn på restaurangen",
+    restaurantNamePlaceholder: "T.ex. Krogen på hörnet",
+    save: "Spara",
+    saved: "Sparat!",
+    saveError: "Något gick fel. Försök igen.",
+    openShiftLabel: "Öppna pass",
+    openShiftHint: "Hur ska öppna pass fyllas när ingen är schemalagd?",
+    openShiftFirstCome: "Först till kvarn",
+    openShiftManual: "Manuellt val",
   },
 
   frozenAccount: {

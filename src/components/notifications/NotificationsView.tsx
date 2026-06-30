@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "@/i18n/LocaleProvider";
-import { Logo } from "@/components/ui/Logo";
+import { AppShell } from "@/components/app/AppShell";
 
 type NotificationDTO = {
   id: string;
@@ -38,8 +38,14 @@ function whenLabel(iso: string) {
 
 export function NotificationsView({
   initialNotifications,
+  role,
+  restaurantName,
+  displayName,
 }: {
   initialNotifications: NotificationDTO[];
+  role: string;
+  restaurantName: string;
+  displayName: string;
 }) {
   const { t } = useTranslations();
   const [notifications, setNotifications] = useState(initialNotifications);
@@ -126,19 +132,10 @@ export function NotificationsView({
   }
 
   return (
-    <div className="flex min-h-full flex-col">
-      <header className="flex items-center justify-between border-b border-border px-5 py-4">
-        <div className="flex items-center gap-4">
-          <Logo />
-          <a href="/app/schedule" className="text-sm text-ink-muted hover:text-primary">
-            {t("app.nav.schedule")}
-          </a>
-        </div>
-      </header>
-
+    <AppShell role={role} restaurantName={restaurantName} displayName={displayName}>
       <main className="flex-1 px-4 py-6 sm:px-6">
         <div className="mx-auto max-w-2xl">
-          <h1 className="text-xl font-bold text-ink">{t("notifications.title")}</h1>
+          <h1 className="font-display text-2xl font-bold text-ink">{t("notifications.title")}</h1>
 
           {notifications.length === 0 && (
             <p className="mt-6 text-sm text-ink-faint">{t("notifications.empty")}</p>
@@ -197,6 +194,6 @@ export function NotificationsView({
           </ul>
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }

@@ -2,10 +2,8 @@
 
 import { useState } from "react";
 import { useTranslations } from "@/i18n/LocaleProvider";
-import { Logo } from "@/components/ui/Logo";
-import { LangToggle } from "@/components/landing/LangToggle";
-import { LogoutButton } from "@/components/auth/LogoutButton";
 import { Button } from "@/components/ui/Button";
+import { AppShell } from "@/components/app/AppShell";
 
 type Tier = "BAS" | "FULL";
 type SubscriptionStatus = "TRIALING" | "ACTIVE" | "PAST_DUE" | "FROZEN" | "CANCELED";
@@ -16,6 +14,7 @@ const MONTHLY_KR: Record<Tier, number> = { BAS: 249, FULL: 499 };
 
 export function BillingView({
   restaurantName,
+  displayName,
   tier,
   subscriptionStatus,
   trialDaysLeft,
@@ -24,6 +23,7 @@ export function BillingView({
   billingOwnerName,
 }: {
   restaurantName: string;
+  displayName: string;
   tier: Tier;
   subscriptionStatus: SubscriptionStatus;
   trialDaysLeft: number | null;
@@ -73,23 +73,10 @@ export function BillingView({
           : "billing.activeBadge";
 
   return (
-    <div className="flex min-h-full flex-col">
-      <header className="flex items-center justify-between border-b border-border px-5 py-4">
-        <div className="flex items-center gap-4">
-          <Logo />
-          <a href="/app/schedule" className="text-sm text-ink-muted hover:text-primary">
-            {t("app.nav.schedule")}
-          </a>
-        </div>
-        <div className="flex items-center gap-4">
-          <LangToggle />
-          <LogoutButton />
-        </div>
-      </header>
-
+    <AppShell role="OWNER" restaurantName={restaurantName} displayName={displayName}>
       <main className="flex-1 px-4 py-6 sm:px-6">
         <div className="mx-auto max-w-md">
-          <h1 className="text-xl font-bold text-ink">{t("billing.title")}</h1>
+          <h1 className="font-display text-2xl font-bold text-ink">{t("billing.title")}</h1>
 
           {!isBillingOwner ? (
             <div className="mt-4 rounded-2xl bg-surface p-5 ring-1 ring-border">
@@ -172,6 +159,6 @@ export function BillingView({
           )}
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }

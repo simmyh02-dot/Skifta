@@ -21,11 +21,15 @@ export default async function SchedulePage() {
   if (!ctx) redirect("/app");
 
   const weekStart = startOfWeek(new Date());
-  const [shifts, restaurant] = await Promise.all([
+  const [shifts, restaurant, user] = await Promise.all([
     listWeek(session.activeRestaurantId, weekStart),
     prisma.restaurant.findUnique({
       where: { id: session.activeRestaurantId },
-      select: { openShiftFill: true },
+      select: { name: true, openShiftFill: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { displayName: true },
     }),
   ]);
 
@@ -33,6 +37,8 @@ export default async function SchedulePage() {
     <ScheduleView
       userId={session.userId}
       role={ctx.role}
+      restaurantName={restaurant?.name ?? ""}
+      displayName={user?.displayName ?? ""}
       initialWeekStart={weekStart.toISOString()}
       initialShifts={JSON.parse(JSON.stringify(shifts))}
       openShiftFill={restaurant?.openShiftFill ?? "MANUAL_PICK"}

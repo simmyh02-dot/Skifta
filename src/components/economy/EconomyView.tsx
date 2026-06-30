@@ -2,13 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "@/i18n/LocaleProvider";
-import { Logo } from "@/components/ui/Logo";
-import { LangToggle } from "@/components/landing/LangToggle";
-import { LogoutButton } from "@/components/auth/LogoutButton";
 import { Avatar } from "@/components/ui/Avatar";
-import { MobileTabBar } from "@/components/app/MobileTabBar";
 import { ArrowDownIcon, CheckIcon } from "@/components/ui/icons";
 import { parseTemplateHeaders } from "@/lib/export-template";
+import { AppShell } from "@/components/app/AppShell";
 
 type ExportFormat = "FORTNOX" | "VISMA" | "CSV" | "CUSTOM";
 
@@ -133,35 +130,7 @@ export function EconomyView({
   }
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <header className="flex items-center justify-between border-b border-border px-5 py-4">
-        <div className="flex items-center gap-3">
-          <Logo />
-          {restaurantName && (
-            <span className="hidden text-sm text-ink-muted sm:inline">· {restaurantName}</span>
-          )}
-          <nav className="ml-2 hidden items-center gap-3 text-sm text-ink-muted sm:flex">
-            <a href="/app/schedule" className="hover:text-primary">{t("app.nav.schedule")}</a>
-            <a href="/app/clock" className="hover:text-primary">{t("app.nav.clock")}</a>
-            <a href="/app/economy" className="text-ink hover:text-primary">{t("app.nav.economy")}</a>
-            <a href="/app/admin/members" className="hover:text-primary">{t("app.nav.admin")}</a>
-          </nav>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setTab("settings")}
-            className="hidden h-9 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-ink hover:bg-primary-hover sm:inline-flex"
-          >
-            <ArrowDownIcon className="text-sm" />
-            {t("economy.export")}
-          </button>
-          <LangToggle />
-          <span className="hidden sm:inline"><LogoutButton /></span>
-          <Avatar name={displayName} size="md" filled />
-        </div>
-      </header>
-
+    <AppShell role={role} restaurantName={restaurantName} displayName={displayName} canClock>
       <main className="mx-auto w-full max-w-5xl flex-1 px-5 py-6">
         {/* Period + tabs */}
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -238,9 +207,7 @@ export function EconomyView({
           )}
         </div>
       </main>
-
-      <MobileTabBar active="third" isAdmin={isAdmin} />
-    </div>
+    </AppShell>
   );
 }
 

@@ -2,10 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "@/i18n/LocaleProvider";
-import { Logo } from "@/components/ui/Logo";
-import { LangToggle } from "@/components/landing/LangToggle";
-import { LogoutButton } from "@/components/auth/LogoutButton";
 import { Button } from "@/components/ui/Button";
+import { AppShell } from "@/components/app/AppShell";
 
 type Person = { id: string; displayName: string };
 
@@ -36,6 +34,8 @@ type Member = { userId: string; displayName: string; role: string; tagIds: strin
 export function ScheduleView({
   userId,
   role,
+  restaurantName,
+  displayName,
   initialWeekStart,
   initialShifts,
   openShiftFill,
@@ -44,6 +44,8 @@ export function ScheduleView({
 }: {
   userId: string;
   role: string;
+  restaurantName: string;
+  displayName: string;
   initialWeekStart: string;
   initialShifts: ShiftDTO[];
   openShiftFill: "FIRST_COME" | "MANUAL_PICK";
@@ -61,7 +63,6 @@ export function ScheduleView({
   const [showBulk, setShowBulk] = useState(false);
   const [showAi, setShowAi] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   useEffect(() => {
     if (isAdmin && members === null) {
@@ -70,18 +71,6 @@ export function ScheduleView({
         .then((data) => data && setMembers(data.members));
     }
   }, [isAdmin, members]);
-
-  useEffect(() => {
-    function loadUnread() {
-      fetch("/api/notifications")
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => data && setUnreadNotifications(data.unreadCount ?? 0))
-        .catch(() => {});
-    }
-    loadUnread();
-    const id = setInterval(loadUnread, 20_000);
-    return () => clearInterval(id);
-  }, []);
 
   async function loadWeek(start: string) {
     const res = await fetch(`/api/shifts?week=${encodeURIComponent(start)}`);
@@ -116,84 +105,61 @@ export function ScheduleView({
     }
   }
 
-  const days = useMemo(() => {
+  const { days, weekLabel } = useMemo(() => {
     const start = new Date(weekStart);
-    return Array.from({ length: 7 }, (_, i) => {
-      const day = new Date(start.getTime() + i * 24 * 60 * 60_000);
-      const dayShifts = shifts
-        .filter((s) => new Date(s.startsAt).toDateString() === day.toDateString())
-        .sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt));
-      return { date: day, shifts: dayShifts };
-    });
+    const end = new Date(start.getTime() + 6 * 24 * 60 * 60_000);
+    const fmt = (d: Date) =>
+      d.toLocaleDateString("sv-SE", { day: "numeric", month: "short" });
+    return {
+      weekLabel: `${fmt(start)} – ${fmt(end)} ${end.getFullYear()}`,
+      days: Array.from({ length: 7 }, (_, i) => {
+        const day = new Date(start.getTime() + i * 24 * 60 * 60_000);
+        const dayShifts = shifts
+          .filter((s) => new Date(s.startsAt).toDateString() === day.toDateString())
+          .sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt));
+        return { date: day, shifts: dayShifts };
+      }),
+    };
   }, [weekStart, shifts]);
 
   return (
-    <div className="flex min-h-full flex-col">
-      <header className="flex items-center justify-between border-b border-border px-5 py-4">
-        <div className="flex items-center gap-4">
-          <Logo />
-          <nav className="flex items-center gap-3 text-sm text-ink-muted">
-            <a href="/app/schedule" className="text-ink hover:text-primary">
-              {t("app.nav.schedule")}
-            </a>
-            <a href="/app/notifications" className="relative hover:text-primary">
-              {t("app.nav.notifications")}
-              {unreadNotifications > 0 && (
-                <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[0.625rem] font-semibold text-white">
-                  {unreadNotifications > 9 ? "9+" : unreadNotifications}
-                </span>
-              )}
-            </a>
-            <a href="/app/availability" className="hover:text-primary">
-              {t("availability.title")}
-            </a>
-            {canClock && (
-              <a href="/app/clock" className="hover:text-primary">
-                {t("app.nav.clock")}
-              </a>
-            )}
-            {isAdmin && (
-              <a href="/app/economy" className="hover:text-primary">
-                {t("app.nav.economy")}
-              </a>
-            )}
-            {isAdmin && (
-              <a href="/app/admin/members" className="hover:text-primary">
-                {t("invite.admin.title")}
-              </a>
-            )}
-            {isAdmin && (
-              <a href="/app/billing" className="hover:text-primary">
-                {t("app.nav.billing")}
-              </a>
-            )}
-          </nav>
-        </div>
-        <div className="flex items-center gap-4">
-          <LangToggle />
-          <LogoutButton />
-        </div>
-      </header>
-
+    <AppShell
+      role={role}
+      restaurantName={restaurantName}
+      displayName={displayName}
+      canClock={canClock}
+    >
       <main className="flex-1 px-4 py-6 sm:px-6">
         <div className="mx-auto max-w-5xl">
-          <div className="flex items-center justify-between gap-3">
-            <h1 className="text-xl font-bold text-ink">{t("schedule.title")}</h1>
-            <div className="flex items-center gap-2">
+          <div className="mb-1">
+            <h1 className="font-display text-2xl font-bold text-ink">{t("schedule.title")}</h1>
+            {restaurantName && (
+              <p className="mt-0.5 text-sm text-ink-muted">{restaurantName}</p>
+            )}
+          </div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => shiftWeek(-7)}
-                className="h-9 rounded-full border border-border-strong px-3 text-sm text-ink hover:bg-surface-2"
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-border-strong text-ink hover:bg-surface-2"
+                aria-label={t("schedule.prevWeek")}
               >
-                ← {t("schedule.prevWeek")}
+                ←
               </button>
+              <span className="tabular min-w-[11rem] text-center text-sm font-medium text-ink">
+                {weekLabel}
+              </span>
               <button
                 type="button"
                 onClick={() => shiftWeek(7)}
-                className="h-9 rounded-full border border-border-strong px-3 text-sm text-ink hover:bg-surface-2"
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-border-strong text-ink hover:bg-surface-2"
+                aria-label={t("schedule.nextWeek")}
               >
-                {t("schedule.nextWeek")} →
+                →
               </button>
+            </div>
+            <div className="flex items-center gap-2">
               {isAdmin && (
                 <button
                   type="button"
@@ -214,7 +180,7 @@ export function ScheduleView({
               )}
               {isAdmin && (
                 <Button size="md" onClick={() => setShowForm((s) => !s)}>
-                  {t("schedule.newShift")}
+                  + {t("schedule.newShift")}
                 </Button>
               )}
             </div>
@@ -285,7 +251,7 @@ export function ScheduleView({
           </div>
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }
 

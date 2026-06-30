@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { TagsAdmin } from "@/components/admin/TagsAdmin";
 import { PeopleAdmin } from "@/components/admin/PeopleAdmin";
 import { parseInviteCsv, type ParsedInviteRow } from "@/lib/csv-invite";
+import { AppShell } from "@/components/app/AppShell";
 
 type Role = "EMPLOYEE" | "CO_OWNER";
 
@@ -20,8 +21,14 @@ export type InviteRow = {
 
 export function MembersAdminView({
   initialInvites,
+  role: userRole,
+  restaurantName,
+  displayName,
 }: {
   initialInvites: InviteRow[];
+  role: string;
+  restaurantName: string;
+  displayName: string;
 }) {
   const { t } = useTranslations();
   const [invites, setInvites] = useState(initialInvites);
@@ -177,11 +184,9 @@ export function MembersAdminView({
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-5 py-10">
-      <a href="/app/economy" className="text-sm text-ink-muted hover:text-primary">
-        ← {t("app.nav.economy")}
-      </a>
-      <h1 className="mt-2 text-2xl font-bold text-ink">{t("invite.admin.title")}</h1>
+    <AppShell role={userRole} restaurantName={restaurantName} displayName={displayName}>
+      <div className="mx-auto max-w-2xl px-5 py-10">
+      <h1 className="text-2xl font-bold text-ink">{t("invite.admin.title")}</h1>
       <p className="mt-1.5 text-sm text-ink-muted">
         {t("invite.admin.subtitle")}
       </p>
@@ -311,6 +316,7 @@ export function MembersAdminView({
           <p className="text-sm text-ink-faint">{t("invite.admin.empty")}</p>
         )}
       </ul>
-    </div>
+      </div>
+    </AppShell>
   );
 }

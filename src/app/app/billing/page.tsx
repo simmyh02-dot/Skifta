@@ -17,7 +17,7 @@ export default async function BillingPage() {
   const ctx = await getAccessContext(session.userId, session.activeRestaurantId);
   if (!ctx || !isAdminRole(ctx.role)) redirect("/app");
 
-  const [restaurant, membership, billingOwner] = await Promise.all([
+  const [restaurant, membership, billingOwner, currentUser] = await Promise.all([
     prisma.restaurant.findUnique({
       where: { id: session.activeRestaurantId },
       select: {
@@ -36,6 +36,10 @@ export default async function BillingPage() {
       where: { restaurantId: session.activeRestaurantId, isBillingOwner: true, endedAt: null },
       select: { user: { select: { displayName: true } } },
     }),
+    prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { displayName: true },
+    }),
   ]);
   if (!restaurant) redirect("/app");
 
@@ -46,6 +50,7 @@ export default async function BillingPage() {
   return (
     <BillingView
       restaurantName={restaurant.name}
+      displayName={currentUser?.displayName ?? ""}
       tier={restaurant.tier}
       subscriptionStatus={restaurant.subscriptionStatus}
       trialDaysLeft={trialDaysLeft}

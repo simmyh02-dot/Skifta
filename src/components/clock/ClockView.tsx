@@ -3,13 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { startRegistration, startAuthentication } from "@simplewebauthn/browser";
 import { useTranslations } from "@/i18n/LocaleProvider";
-import { Logo } from "@/components/ui/Logo";
-import { LangToggle } from "@/components/landing/LangToggle";
-import { LogoutButton } from "@/components/auth/LogoutButton";
 import { Avatar } from "@/components/ui/Avatar";
-import { MobileTabBar } from "@/components/app/MobileTabBar";
 import { QrClockInOverlay } from "@/components/clock/QrClockInOverlay";
 import { QrIcon, ScanIcon } from "@/components/ui/icons";
+import { AppShell } from "@/components/app/AppShell";
 
 type Flag = { minutesDelta: number; severity: "NONE" | "LOW" | "HIGH" };
 type ClockEventDTO = {
@@ -149,31 +146,7 @@ export function ClockView({
   const clockedIn = !!data?.openSince;
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <header className="flex items-center justify-between border-b border-border px-5 py-4">
-        <div className="flex items-center gap-3">
-          <Logo />
-          {restaurantName && (
-            <span className="hidden text-sm text-ink-muted sm:inline">· {restaurantName}</span>
-          )}
-          <nav className="ml-2 hidden items-center gap-3 text-sm text-ink-muted sm:flex">
-            <a href="/app/schedule" className="hover:text-primary">{t("app.nav.schedule")}</a>
-            <a href="/app/clock" className="text-ink hover:text-primary">{t("app.nav.clock")}</a>
-            {isAdmin && (
-              <a href="/app/economy" className="hover:text-primary">{t("app.nav.economy")}</a>
-            )}
-            {isAdmin && (
-              <a href="/app/clock/setup" className="hover:text-primary">{t("clock.admin.title")}</a>
-            )}
-          </nav>
-        </div>
-        <div className="flex items-center gap-3">
-          <LangToggle />
-          <span className="hidden sm:inline"><LogoutButton /></span>
-          <Avatar name={displayName} size="md" filled />
-        </div>
-      </header>
-
+    <AppShell role={role} restaurantName={restaurantName} displayName={displayName} canClock>
       <main className="mx-auto w-full max-w-md flex-1 px-5 py-6">
         {/* Hero card */}
         <section className="rounded-3xl bg-primary p-6 text-primary-ink shadow-lg">
@@ -281,9 +254,7 @@ export function ClockView({
 
         <SetupSection data={data} onChange={load} />
       </main>
-
-      <MobileTabBar active="clock" isAdmin={isAdmin} />
-    </div>
+    </AppShell>
   );
 }
 
