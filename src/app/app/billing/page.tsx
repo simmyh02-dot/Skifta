@@ -7,6 +7,11 @@ import { BillingView } from "@/components/billing/BillingView";
 
 export const dynamic = "force-dynamic";
 
+function trialDaysLeftFrom(trialEndsAt: Date | null): number | null {
+  if (!trialEndsAt) return null;
+  return Math.max(0, Math.ceil((+new Date(trialEndsAt) - Date.now()) / 86_400_000));
+}
+
 export default async function BillingPage() {
   const session = await getSession();
   if (!session) redirect("/login");
@@ -43,9 +48,7 @@ export default async function BillingPage() {
   ]);
   if (!restaurant) redirect("/app");
 
-  const trialDaysLeft = restaurant.trialEndsAt
-    ? Math.max(0, Math.ceil((+new Date(restaurant.trialEndsAt) - Date.now()) / 86_400_000))
-    : null;
+  const trialDaysLeft = trialDaysLeftFrom(restaurant.trialEndsAt);
 
   return (
     <BillingView

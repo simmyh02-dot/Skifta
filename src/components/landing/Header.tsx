@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useTranslations } from "@/i18n/LocaleProvider";
 import { Logo } from "@/components/ui/Logo";
@@ -20,9 +21,9 @@ export function Header() {
   return (
     <header className="sticky top-0 z-30 border-b border-border/60 bg-bg/85 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
-        <a href="/" aria-label="Skifta">
+        <Link href="/" aria-label="Skifta">
           <Logo />
-        </a>
+        </Link>
 
         {/* Desktop nav */}
         <nav className="hidden items-center gap-7 md:flex">

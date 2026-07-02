@@ -65,10 +65,13 @@ export function LocaleProvider({
   const [locale, setLocaleState] = useState<Locale>(initialLocale);
 
   // Restore a previously chosen locale on the client. Initial render stays
-  // deterministic (= initialLocale) to avoid a hydration mismatch.
+  // deterministic (= initialLocale) to avoid a hydration mismatch, so the
+  // stored locale can only be applied after mount — the one extra render when
+  // a stored locale differs is the cost of hydration safety.
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- see above
       if (isLocale(stored)) setLocaleState(stored);
     } catch {
       /* localStorage unavailable — keep default */

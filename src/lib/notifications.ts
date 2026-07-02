@@ -14,3 +14,9 @@ export async function listNotifications(userId: string) {
   ]);
   return { notifications, unreadCount };
 }
+
+/** Just the unread count — for the nav-badge poll, which runs every 20s per
+ *  signed-in client and doesn't need the 50-row feed payload. */
+export async function unreadNotificationCount(userId: string): Promise<number> {
+  return prisma.notification.count({ where: { userId, status: "UNREAD" } });
+}

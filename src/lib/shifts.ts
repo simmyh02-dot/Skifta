@@ -194,9 +194,11 @@ export async function updateShift(
   const nextSlots = input.slots && input.slots > 0 ? Math.floor(input.slots) : shift.slots;
 
   if (timeChanged) {
-    for (const a of shift.assignments) {
-      await assertNoDoubleBooking(a.userId, restaurantId, nextStart, nextEnd, shiftId);
-    }
+    await Promise.all(
+      shift.assignments.map((a) =>
+        assertNoDoubleBooking(a.userId, restaurantId, nextStart, nextEnd, shiftId),
+      ),
+    );
   }
 
   const updated = await prisma.shift.update({
@@ -217,9 +219,11 @@ export async function updateShift(
   });
 
   if (timeChanged) {
-    for (const a of shift.assignments) {
-      await notifyShiftChanged(a.userId, restaurantId, updated.restaurant.name, updated.startsAt, shiftId);
-    }
+    await Promise.all(
+      shift.assignments.map((a) =>
+        notifyShiftChanged(a.userId, restaurantId, updated.restaurant.name, updated.startsAt, shiftId),
+      ),
+    );
   }
 
   return updated;
@@ -244,13 +248,17 @@ export async function assignToShift(
   return added;
 }
 
-/** Owner removes one person from a shift, reopening it if it's no longer full. */
+/** Owner removes one person from a shift, reopening it if it's no longer full.
+ *  Only live shifts — a COMPLETED/CANCELED shift is history and must never be
+ *  resurrected as OPEN. */
 export async function unassignFromShift(
   shiftId: string,
   restaurantId: string,
   userId: string,
 ): Promise<boolean> {
-  const shift = await prisma.shift.findFirst({ where: { id: shiftId, restaurantId } });
+  const shift = await prisma.shift.findFirst({
+    where: { id: shiftId, restaurantId, status: { in: ["OPEN", "ASSIGNED"] } },
+  });
   if (!shift) return false;
 
   const result = await prisma.shiftAssignment.deleteMany({ where: { shiftId, userId } });
@@ -290,15 +298,23 @@ export async function qualifiedMembers(restaurantId: string, shiftId: string) {
     return members.map((m) => m.user);
   }
 
-  const requiredIds = new Set(shift.requiredTags.map((t) => t.id));
-  const qualified = [];
-  for (const m of members) {
-    const tags = await prisma.employeeTag.findMany({
-      where: { userId: m.userId, tagId: { in: Array.from(requiredIds) } },
-    });
-    if (tags.length === requiredIds.size) qualified.push(m.user);
+  // One query for everyone's matching tags, tallied in memory — this runs on
+  // every claim/interest/swap qualification check.
+  const requiredIds = shift.requiredTags.map((t) => t.id);
+  const tagRows = await prisma.employeeTag.findMany({
+    where: {
+      userId: { in: members.map((m) => m.userId) },
+      tagId: { in: requiredIds },
+    },
+    select: { userId: true },
+  });
+  const matchCount = new Map<string, number>();
+  for (const r of tagRows) {
+    matchCount.set(r.userId, (matchCount.get(r.userId) ?? 0) + 1);
   }
-  return qualified;
+  return members
+    .filter((m) => matchCount.get(m.userId) === requiredIds.length)
+    .map((m) => m.user);
 }
 
 /**
@@ -347,8 +363,9 @@ async function rejectRemainingInterests(shiftId: string, pickedUserId: string): 
   });
   if (stillPending.length === 0) return;
 
+  // Reject exactly the rows we fetched, so no one is rejected unnotified.
   await prisma.shiftInterest.updateMany({
-    where: { shiftId, userId: { not: pickedUserId }, status: "PENDING" },
+    where: { id: { in: stillPending.map((i) => i.id) } },
     data: { status: "REJECTED" },
   });
   await Promise.all(

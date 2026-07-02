@@ -14,7 +14,6 @@ export interface MessageSender {
 
 class ConsoleSender implements MessageSender {
   async send(to: ContactTarget, body: string): Promise<void> {
-    // eslint-disable-next-line no-console
     console.info(`[messaging:dev] → ${to.type} ${to.value}\n${body}`);
   }
 }

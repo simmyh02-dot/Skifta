@@ -85,7 +85,6 @@ export function EconomyView({
   initialOverview: Overview;
 }) {
   const { t, locale } = useTranslations();
-  const isAdmin = role === "OWNER" || role === "CO_OWNER";
 
   const [period, setPeriod] = useState(initialPeriod);
   const [data, setData] = useState<Overview>(initialOverview);
@@ -117,7 +116,6 @@ export function EconomyView({
     [data.periodStart, locale],
   );
 
-  const openDeviations = data.deviations.filter((d) => d.status === "OPEN");
 
   async function actOnDeviation(id: string, body: Record<string, unknown>) {
     const res = await fetch(`/api/economy/deviations/${id}`, {

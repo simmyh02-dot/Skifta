@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { startRegistration, startAuthentication } from "@simplewebauthn/browser";
 import { useTranslations } from "@/i18n/LocaleProvider";
-import { Avatar } from "@/components/ui/Avatar";
 import { QrClockInOverlay } from "@/components/clock/QrClockInOverlay";
 import { QrIcon, ScanIcon } from "@/components/ui/icons";
 import { AppShell } from "@/components/app/AppShell";
@@ -55,7 +54,6 @@ export function ClockView({
   displayName: string;
 }) {
   const { t } = useTranslations();
-  const isAdmin = role === "OWNER" || role === "CO_OWNER";
   const [data, setData] = useState<History | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);

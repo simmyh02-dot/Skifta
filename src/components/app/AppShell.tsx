@@ -122,7 +122,7 @@ export function AppShell({
 
   useEffect(() => {
     function poll() {
-      fetch("/api/notifications")
+      fetch("/api/notifications?count=1")
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => d && setUnread(d.unreadCount ?? 0))
         .catch(() => {});

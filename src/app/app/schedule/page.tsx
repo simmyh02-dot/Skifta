@@ -3,6 +3,7 @@ import { getSession } from "@/lib/session";
 import { getAccessContext } from "@/lib/guard";
 import { can } from "@/lib/authz";
 import { listWeek } from "@/lib/shifts";
+import { maybeEscalateOverdueSwaps } from "@/lib/swaps";
 import { startOfWeek } from "@/lib/week";
 import { prisma } from "@/lib/prisma";
 import { ScheduleView } from "@/components/schedule/ScheduleView";
@@ -19,6 +20,9 @@ export default async function SchedulePage() {
     session.activeRestaurantId,
   );
   if (!ctx) redirect("/app");
+
+  // Escalate any swap past its reply window (throttled; daily cron is the floor).
+  await maybeEscalateOverdueSwaps();
 
   const weekStart = startOfWeek(new Date());
   const [shifts, restaurant, user] = await Promise.all([

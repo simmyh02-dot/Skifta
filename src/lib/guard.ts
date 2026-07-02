@@ -83,7 +83,6 @@ export function errorResponse(err: unknown): Response {
   if (err instanceof AuthError) {
     return Response.json({ error: err.message }, { status: err.status });
   }
-  // eslint-disable-next-line no-console
   console.error(err);
   return Response.json({ error: "internal_error" }, { status: 500 });
 }

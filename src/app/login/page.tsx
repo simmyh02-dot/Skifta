@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
@@ -28,9 +29,9 @@ export default async function LoginPage() {
   return (
     <div className="flex min-h-full flex-col">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-5">
-        <a href="/" aria-label="Skifta">
+        <Link href="/" aria-label="Skifta">
           <Logo />
-        </a>
+        </Link>
         <LangToggle />
       </header>
       <main className="flex flex-1 items-center justify-center px-5 pb-16">

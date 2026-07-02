@@ -65,7 +65,6 @@ export async function POST(req: Request) {
         break; // not every event type matters to us
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error("[billing:webhook]", err);
     return Response.json({ error: "internal_error" }, { status: 500 });
   }

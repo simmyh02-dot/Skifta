@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Logo } from "@/components/ui/Logo";
 import { LangToggle } from "@/components/landing/LangToggle";
 import { JoinForm } from "@/components/invite/JoinForm";
@@ -11,9 +12,9 @@ export default async function JoinPage({
   return (
     <div className="flex min-h-full flex-col">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-5">
-        <a href="/" aria-label="Skifta">
+        <Link href="/" aria-label="Skifta">
           <Logo />
-        </a>
+        </Link>
         <LangToggle />
       </header>
       <main className="flex flex-1 items-center justify-center px-5 pb-16">

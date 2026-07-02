@@ -155,56 +155,71 @@ export async function onShiftNow(restaurantId: string): Promise<OnShiftEntry[]> 
   }
   const lowTol = restaurant?.toleranceLowMinutes ?? 10;
 
-  const entries: OnShiftEntry[] = [];
-  for (const m of members) {
-    const last = await prisma.clockEvent.findFirst({
-      where: { userId: m.userId, restaurantId },
-      orderBy: { timestamp: "desc" },
-      select: { direction: true, timestamp: true, scheduledShiftId: true },
-    });
-    if (last?.direction !== "IN") continue;
+  // Latest stamp per member in one query (this runs on the kiosk's 20s poll),
+  // then one batched lookup for the matched shifts of those clocked IN.
+  const lastEvents = await prisma.clockEvent.findMany({
+    where: { restaurantId, userId: { in: userIds } },
+    orderBy: { timestamp: "desc" },
+    distinct: ["userId"],
+    select: { userId: true, direction: true, timestamp: true, scheduledShiftId: true },
+  });
+  const clockedIn = lastEvents.filter((e) => e.direction === "IN");
 
+  const shiftIds = clockedIn
+    .map((e) => e.scheduledShiftId)
+    .filter((id): id is string => !!id);
+  const shifts = shiftIds.length
+    ? await prisma.shift.findMany({
+        where: { id: { in: shiftIds } },
+        select: { id: true, startsAt: true },
+      })
+    : [];
+  const shiftById = new Map(shifts.map((s) => [s.id, s]));
+  const nameByUser = new Map(members.map((m) => [m.userId, m.user.displayName]));
+
+  const entries: OnShiftEntry[] = clockedIn.map((last) => {
     let onTime: boolean | null = null;
-    if (last.scheduledShiftId) {
-      const shift = await prisma.shift.findUnique({
-        where: { id: last.scheduledShiftId },
-        select: { startsAt: true },
-      });
-      if (shift) {
-        const deltaMin = Math.abs(
-          (last.timestamp.getTime() - shift.startsAt.getTime()) / 60_000,
-        );
-        onTime = deltaMin <= lowTol;
-      }
+    const shift = last.scheduledShiftId ? shiftById.get(last.scheduledShiftId) : undefined;
+    if (shift) {
+      const deltaMin = Math.abs(
+        (last.timestamp.getTime() - shift.startsAt.getTime()) / 60_000,
+      );
+      onTime = deltaMin <= lowTol;
     }
-    entries.push({
-      userId: m.userId,
-      displayName: m.user.displayName,
+    return {
+      userId: last.userId,
+      displayName: nameByUser.get(last.userId) ?? "",
       since: last.timestamp.toISOString(),
-      tagNames: tagsByUser.get(m.userId) ?? [],
+      tagNames: tagsByUser.get(last.userId) ?? [],
       onTime,
-    });
-  }
+    };
+  });
   return entries.sort((a, b) => a.since.localeCompare(b.since));
 }
 
-/** The person's assigned shift that day whose relevant boundary is closest to
- *  the stamp (start for IN, end for OUT). Open/unassigned shifts don't match. */
+/** How far from a shift's interval a stamp may fall and still be matched to
+ *  it. Generous on purpose — a way-too-early IN should match (and be flagged
+ *  as a deviation), not silently miss its shift. */
+const MATCH_WINDOW_MS = 12 * 60 * 60_000;
+
+/** The person's assigned shift near the stamp whose relevant boundary is
+ *  closest (start for IN, end for OUT). Matching is proximity-based — the
+ *  stamp must fall within 12h of the shift's interval — rather than
+ *  calendar-day based, so overnight shifts and stamps just past midnight
+ *  match correctly regardless of the server's timezone. Open/unassigned
+ *  shifts don't match. */
 async function matchShift(
   userId: string,
   restaurantId: string,
   timestamp: Date,
   direction: ClockDirection,
 ) {
-  const dayStart = new Date(timestamp);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60_000);
-
   const shifts = await prisma.shift.findMany({
     where: {
       restaurantId,
       assignments: { some: { userId } },
-      startsAt: { gte: dayStart, lt: dayEnd },
+      startsAt: { lte: new Date(timestamp.getTime() + MATCH_WINDOW_MS) },
+      endsAt: { gte: new Date(timestamp.getTime() - MATCH_WINDOW_MS) },
     },
   });
   if (shifts.length === 0) return null;
